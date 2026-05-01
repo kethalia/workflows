@@ -1,0 +1,6 @@
+paths:
+  .github/actions/**/action.yml:
+    ignore:
+      - '"jobs" section is missing in workflow'
+      - '"on" section is missing in workflow'
+      - 'unexpected key "(description|inputs|outputs|runs|branding)" for "workflow" section'

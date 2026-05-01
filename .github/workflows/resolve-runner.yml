@@ -1,0 +1,36 @@
+# Reusable workflow: emit runner labels for the heavy/light tiers.
+#
+# Resolution order (first match wins):
+#   heavy → vars.RUNNER_HEAVY → 'self-hosted'
+#   light → vars.RUNNER_LIGHT → 'ubuntu-latest'
+#
+# This job itself runs on `vars.RUNNER_RESOLVER || 'ubuntu-latest'` so the
+# resolver never depends on the self-hosted fleet being healthy.
+#
+# `vars.*` resolves against the top-level caller's repository, so per-repo
+# overrides on consuming repos (e.g. chillpass) are honored even when this
+# workflow is invoked transitively via another reusable workflow.
+name: Reusable — Resolve runner labels
+
+on:
+  workflow_call:
+    outputs:
+      heavy:
+        description: Runner label for CPU/IO-heavy jobs (builds, tests).
+        value: ${{ jobs.resolve.outputs.heavy }}
+      light:
+        description: Runner label for light coordination jobs.
+        value: ${{ jobs.resolve.outputs.light }}
+
+jobs:
+  resolve:
+    name: Resolve runner
+    runs-on: ${{ vars.RUNNER_RESOLVER || 'ubuntu-latest' }}
+    outputs:
+      heavy: ${{ steps.r.outputs.heavy }}
+      light: ${{ steps.r.outputs.light }}
+    steps:
+      - id: r
+        run: |
+          echo "heavy=${{ vars.RUNNER_HEAVY || 'self-hosted' }}" >> "$GITHUB_OUTPUT"
+          echo "light=${{ vars.RUNNER_LIGHT || 'ubuntu-latest' }}" >> "$GITHUB_OUTPUT"

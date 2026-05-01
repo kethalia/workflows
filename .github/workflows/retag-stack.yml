@@ -1,0 +1,134 @@
+name: Retag — Docker stack (promote on release)
+
+# Build-once / promote-on-release counterpart to release-docker-stack.yml.
+# Drives changesets versioning, intersects the published-packages set with the
+# caller-supplied images map, and retags each matched image's :sha-<github.sha[:7]>
+# tag to :v<version> + :latest WITHOUT rebuilding (manifest-list copies via
+# `docker buildx imagetools create`). Assumes a merge-to-main publish workflow
+# has already pushed the :sha-<short> tag for github.sha (cache hit on a pure
+# version-bump commit).
+
+on:
+  workflow_call:
+    inputs:
+      images:
+        description: |
+          JSON map: { "<published-package-name>": { "image": "<ghcr-image-name>" } }.
+          Keys must match `name` values in the changesets `publishedPackages` output;
+          only intersecting entries are retagged. context/dockerfile are NOT consumed
+          (no rebuild) — they may be present but are ignored.
+        type: string
+        required: true
+      node-version:
+        description: Node.js version used for the changesets step.
+        type: number
+        required: false
+        default: 22
+      registry:
+        description: Container registry hostname.
+        type: string
+        required: false
+        default: ghcr.io
+    outputs:
+      published:
+        description: "'true' when changesets/action published one or more packages."
+        value: ${{ jobs.release.outputs.published }}
+      retag-matrix:
+        description: JSON matrix include array of resolved images that were retagged.
+        value: ${{ jobs.release.outputs.retag-matrix }}
+      version:
+        description: First published package version (convenience for callers releasing a single semver per run).
+        value: ${{ jobs.release.outputs.version }}
+      source-sha-short:
+        description: Short SHA (7 chars) of the commit whose :sha-<short> tag was used as the retag source.
+        value: ${{ jobs.release.outputs.source-sha-short }}
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  release:
+    name: Release
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: write
+    outputs:
+      published: ${{ steps.cs.outputs.published }}
+      retag-matrix: ${{ steps.intersect.outputs.matrix }}
+      version: ${{ steps.intersect.outputs.version }}
+      source-sha-short: ${{ steps.intersect.outputs.source-sha-short }}
+    steps:
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          fetch-depth: 0
+
+      - name: Changesets
+        id: cs
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset version
+          publish: pnpm changeset tag
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Intersect publishedPackages with images map
+        id: intersect
+        if: steps.cs.outputs.published == 'true'
+        env:
+          PUBLISHED: ${{ steps.cs.outputs.publishedPackages }}
+          IMAGES: ${{ inputs.images }}
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA:0:7}"
+          matrix=$(jq -nc --argjson m "$IMAGES" --argjson p "$PUBLISHED" --arg s "$short" '
+            { include: [
+                $p[]
+                | . as $pkg
+                | ($m[$pkg.name] // empty)
+                | { name: $pkg.name, image: .image, version: $pkg.version, "source-sha-short": $s }
+              ]
+            }
+          ')
+          echo "Resolved retag matrix: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          version=$(jq -r '.[0].version // ""' <<<"$PUBLISHED")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "source-sha-short=$short" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Retag stack — release plan"
+            echo
+            echo "- source-sha-short: \`$short\`"
+            echo "- published version: \`$version\`"
+            echo
+            echo "| package | image | source tag | dest tags |"
+            echo "| --- | --- | --- | --- |"
+            jq -r --arg s "$short" --arg v "$version" '.include[]
+              | "| \(.name) | \(.image) | sha-\($s) | v\($v), latest |"' <<<"$matrix"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  retag:
+    needs: [release]
+    if: |
+      needs.release.outputs.published == 'true'
+      && needs.release.outputs.retag-matrix != ''
+      && needs.release.outputs.retag-matrix != '{"include":[]}'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.release.outputs.retag-matrix) }}
+    uses: kethalia/workflows/.github/workflows/retag-image.yml@main
+    with:
+      image: ${{ matrix.image }}
+      source-tag: sha-${{ matrix.source-sha-short }}
+      dest-tags: |
+        v${{ matrix.version }}
+        latest
+      registry: ${{ inputs.registry }}

@@ -1,0 +1,132 @@
+# Reusable workflow: build a Docker image and (optionally) push it to GHCR
+# with a registry-backed BuildKit cache for cross-PR layer reuse.
+#
+# Caller requirements:
+#   permissions:
+#     contents: read
+#     packages: write   # required to push the image and the :buildcache manifest
+#
+# Cache convention:
+#   We use `type=registry,ref=<image>:buildcache,mode=max`. This stores the cache
+#   manifest as a SEPARATE tag (`:buildcache`) inside the same GHCR package as
+#   the image. That tag is intentional — do NOT prune it during retention sweeps.
+#   It is what makes layer reuse work across PRs and forks of the cache window.
+#
+# push: false behavior:
+#   When `push` is false (e.g. PR validation from a fork without packages:write),
+#   we build only and SKIP `cache-to`. Read-only tokens can still pull cache via
+#   `cache-from` but cannot export, so writing would 403. Reads remain enabled
+#   so PRs benefit from prior cache without being able to poison it.
+name: Reusable — Build and push Docker image to GHCR
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: GHCR image name without owner prefix or tag (e.g. "chillpass-smoke"). Lowercased automatically.
+        type: string
+        required: true
+      tags:
+        description: Newline-separated full tag refs to apply (e.g. "ghcr.io/chillwhales/chillpass-smoke:smoke-abc1234").
+        type: string
+        required: true
+      context:
+        description: Docker build context path.
+        type: string
+        required: false
+        default: .
+      dockerfile:
+        description: Path to the Dockerfile, relative to the build context.
+        type: string
+        required: false
+        default: Dockerfile
+      platforms:
+        description: Comma-separated build platforms.
+        type: string
+        required: false
+        default: linux/amd64
+      build-args:
+        description: Newline-separated KEY=VALUE build args.
+        type: string
+        required: false
+        default: ""
+      push:
+        description: Whether to push tags and export build cache. Set false for fork PR validation builds.
+        type: boolean
+        required: false
+        default: true
+    outputs:
+      digest:
+        description: sha256 digest emitted by docker/build-push-action.
+        value: ${{ jobs.build-and-push.outputs.digest }}
+      image-ref:
+        description: Lowercased ghcr.io/<owner>/<image> (no tag).
+        value: ${{ jobs.build-and-push.outputs.image-ref }}
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  build-and-push:
+    name: Build ${{ inputs.image }}
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
+    needs: [resolve-runner]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest || steps.build-no-push.outputs.digest }}
+      image-ref: ${{ steps.ref.outputs.image-ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve lowercase image reference
+        id: ref
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          name="${{ inputs.image }}"
+          name="${name,,}"
+          echo "image-ref=ghcr.io/${owner}/${name}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        if: ${{ inputs.push }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (with cache export)
+        if: ${{ inputs.push }}
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.context }}/${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          tags: ${{ inputs.tags }}
+          push: true
+          cache-from: type=registry,ref=${{ steps.ref.outputs.image-ref }}:buildcache
+          cache-to: type=registry,ref=${{ steps.ref.outputs.image-ref }}:buildcache,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build only (no cache export)
+        if: ${{ !inputs.push }}
+        id: build-no-push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.context }}/${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          tags: ${{ inputs.tags }}
+          push: false
+          cache-from: type=registry,ref=${{ steps.ref.outputs.image-ref }}:buildcache
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}

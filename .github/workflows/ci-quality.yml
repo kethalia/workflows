@@ -1,0 +1,153 @@
+name: CI — Quality Checks
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version
+        type: number
+        required: false
+        default: 22
+      verify-command:
+        description: Package verification command (e.g., "pnpm validate:publish")
+        type: string
+        required: false
+        default: ""
+      changeset-check:
+        description: Whether to run changeset status check on PRs
+        type: boolean
+        required: false
+        default: true
+      base-branch:
+        description: Base branch for changeset comparison (e.g., "main")
+        type: string
+        required: false
+        default: main
+      audit:
+        description: Whether to run pnpm audit
+        type: boolean
+        required: false
+        default: true
+      audit-level:
+        description: pnpm audit severity threshold (low/moderate/high/critical)
+        type: string
+        required: false
+        default: critical
+      sherif-command:
+        description: Sherif monorepo consistency check command (e.g., "pnpm sherif"). Empty = skip.
+        type: string
+        required: false
+        default: ""
+      knip-command:
+        description: Knip unused-code check command (e.g., "pnpm knip"). Empty = skip.
+        type: string
+        required: false
+        default: ""
+      madge-command:
+        description: Madge circular-dependency check command (e.g., "pnpm madge --circular ."). Empty = skip.
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  # -------------------------------------------------------------------------
+  # Package Verify (downloads build artifact from caller workflow)
+  # -------------------------------------------------------------------------
+  pkg-verify:
+    name: Package Verify
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    if: inputs.verify-command != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: packages
+      - run: ${{ inputs.verify-command }}
+
+  # -------------------------------------------------------------------------
+  # Changeset Check (PRs only)
+  # -------------------------------------------------------------------------
+  changeset-check:
+    name: Changeset Check
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    if: inputs.changeset-check && github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm changeset status --since=origin/${{ inputs.base-branch }}
+
+  # -------------------------------------------------------------------------
+  # Audit (pnpm audit against severity threshold)
+  # -------------------------------------------------------------------------
+  audit:
+    name: Audit
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    if: inputs.audit
+    steps:
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
+        with:
+          node-version: ${{ inputs.node-version }}
+      - run: pnpm audit --audit-level=${{ inputs.audit-level }}
+
+  # -------------------------------------------------------------------------
+  # Sherif (monorepo dependency consistency)
+  # -------------------------------------------------------------------------
+  sherif:
+    name: Sherif
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    if: inputs.sherif-command != ''
+    steps:
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
+        with:
+          node-version: ${{ inputs.node-version }}
+      - run: ${{ inputs.sherif-command }}
+
+  # -------------------------------------------------------------------------
+  # Knip (unused exports/files/dependencies)
+  # -------------------------------------------------------------------------
+  knip:
+    name: Knip
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    if: inputs.knip-command != ''
+    steps:
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
+        with:
+          node-version: ${{ inputs.node-version }}
+      - run: ${{ inputs.knip-command }}
+
+  # -------------------------------------------------------------------------
+  # Madge (circular dependency detection)
+  # -------------------------------------------------------------------------
+  madge:
+    name: Madge
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    if: inputs.madge-command != ''
+    steps:
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
+        with:
+          node-version: ${{ inputs.node-version }}
+      - run: ${{ inputs.madge-command }}

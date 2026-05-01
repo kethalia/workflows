@@ -1,0 +1,90 @@
+# Reusable GHCR tag-existence verifier.
+#
+# Confirms that a given tag (default: `:sha-<short>` derived from the PR head sha)
+# exists on every named container package in `ghcr.io/<org>/`. Designed for the
+# pre-merge half of the build-once-promote-on-release contract: callers run this
+# as a required check on Version Packages PRs so the post-merge retag step is
+# guaranteed to find its source tags.
+#
+# This workflow is `workflow_call`-only by design (MEM055/MEM060): triggers
+# (`pull_request`, `workflow_dispatch`, etc.) live on the caller, never on the
+# reusable. The caller computes whether to run (e.g., title match on
+# "Version Packages") and passes the sha + package list down.
+#
+# Required caller permissions:
+#   contents: read
+#   packages: read
+#
+# Recovery: if a check fails, either rerun the upstream build workflow on the
+# PR head, or push an empty commit to retrigger the build.
+
+name: Reusable — Verify GHCR tags
+
+on:
+  workflow_call:
+    inputs:
+      org:
+        description: GitHub organization that owns the container packages. Lowercased automatically.
+        type: string
+        required: true
+      packages:
+        description: JSON array of container package names under the org (e.g. '["chillpass", "chillpass-auth"]').
+        type: string
+        required: true
+      sha:
+        description: Full git sha to verify. The short form (first 7 chars) is checked as `:sha-<short>`. Defaults to the PR head sha on pull_request events.
+        type: string
+        required: false
+        default: ""
+      tag:
+        description: Explicit tag to verify (e.g., "v1.2.3"). Overrides `sha` when set.
+        type: string
+        required: false
+        default: ""
+      runner:
+        description: Runner label (resolved by caller via resolve-runner.yml).
+        type: string
+        required: false
+        default: ubuntu-latest
+
+jobs:
+  verify:
+    runs-on: ${{ inputs.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(inputs.packages) }}
+    steps:
+      - id: tag
+        name: Resolve tag to verify
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_SHA: ${{ inputs.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -n "${INPUT_TAG}" ]; then
+            echo "tag=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sha="${INPUT_SHA:-$PR_HEAD_SHA}"
+          if [ -z "${sha}" ]; then
+            echo "::error::no tag or sha provided and no pull_request head sha available"
+            exit 1
+          fi
+          echo "tag=sha-${sha:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag exists in GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG: ${{ inputs.org }}
+          IMAGE: ${{ matrix.image }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          org_lc="$(echo "${ORG}" | tr '[:upper:]' '[:lower:]')"
+          if ! gh api --paginate "/users/${org_lc}/packages/container/${IMAGE}/versions" \
+              --jq '.[].metadata.container.tags[]' \
+            | grep -qx "${TAG}"; then
+            echo "::error::${TAG} tag missing for ghcr.io/${org_lc}/${IMAGE}; the upstream build workflow must succeed before this PR can merge"
+            exit 1
+          fi
+          echo "Found ghcr.io/${org_lc}/${IMAGE}:${TAG}"

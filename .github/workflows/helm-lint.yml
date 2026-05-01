@@ -1,0 +1,130 @@
+name: CI — Helm Lint & Template
+
+on:
+  workflow_call:
+    inputs:
+      charts:
+        description: Newline-separated list of chart paths (relative to caller repo root)
+        type: string
+        required: true
+      helm-version:
+        description: Helm version to install via azure/setup-helm
+        type: string
+        required: false
+        default: v3.16.2
+      strict:
+        description: Pass --strict to helm lint
+        type: boolean
+        required: false
+        default: true
+      runs-on:
+        description: |
+          Runner label for the lint matrix jobs. When empty, falls back to the
+          tiered resolver (`vars.RUNNER_HEAVY` → default `self-hosted`). Pass
+          a value to force a specific runner.
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  # -------------------------------------------------------------------------
+  # Setup — split newline-separated charts input into JSON matrix
+  # -------------------------------------------------------------------------
+  setup:
+    name: Setup Matrix
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+    steps:
+      - id: build-matrix
+        name: Build chart matrix
+        env:
+          CHARTS_INPUT: ${{ inputs.charts }}
+        run: |
+          # Split newline-separated input, drop blanks, emit JSON array
+          mapfile -t charts < <(printf '%s\n' "$CHARTS_INPUT" | sed 's/[[:space:]]\+$//' | grep -v '^[[:space:]]*$')
+          if [ "${#charts[@]}" -eq 0 ]; then
+            echo "::error::No chart paths provided in 'charts' input"
+            exit 1
+          fi
+          json="["
+          for i in "${!charts[@]}"; do
+            [ "$i" -gt 0 ] && json+=","
+            json+=$(printf '%s' "${charts[$i]}" | jq -Rs .)
+          done
+          json+="]"
+          echo "matrix=${json}" >> "$GITHUB_OUTPUT"
+          echo "Resolved chart matrix: ${json}"
+
+  # -------------------------------------------------------------------------
+  # Lint + template each chart in parallel; fail-fast disabled so all charts
+  # report independently and reviewers see every failure in one CI pass.
+  # -------------------------------------------------------------------------
+  lint:
+    name: Helm Lint (${{ matrix.chart }})
+    needs: [resolve-runner, setup]
+    runs-on: ${{ inputs.runs-on != '' && inputs.runs-on || needs.resolve-runner.outputs.heavy }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        chart: ${{ fromJson(needs.setup.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ inputs.helm-version }}
+
+      - name: Verify chart path exists
+        run: |
+          if [ ! -d "${{ matrix.chart }}" ]; then
+            echo "::error::Chart path '${{ matrix.chart }}' does not exist in caller repo"
+            exit 1
+          fi
+          if [ ! -f "${{ matrix.chart }}/Chart.yaml" ]; then
+            echo "::error::No Chart.yaml at '${{ matrix.chart }}'"
+            exit 1
+          fi
+
+      - name: Helm dependency update
+        working-directory: ${{ matrix.chart }}
+        run: helm dependency update
+
+      - name: Helm lint
+        working-directory: ${{ matrix.chart }}
+        run: |
+          if [ "${{ inputs.strict }}" = "true" ]; then
+            helm lint --strict .
+          else
+            helm lint .
+          fi
+
+      - name: Helm template (render)
+        run: |
+          mkdir -p .helm-render
+          chart_name=$(basename "${{ matrix.chart }}")
+          helm template "$chart_name" "${{ matrix.chart }}" > ".helm-render/${chart_name}.yaml"
+          echo "Rendered $(wc -l < ".helm-render/${chart_name}.yaml") lines for ${chart_name}"
+
+      - name: Compute artifact name
+        id: artifact-name
+        run: |
+          # Replace path separators with dashes so artifact names are valid
+          safe_name=$(printf '%s' "${{ matrix.chart }}" | tr '/' '-' | tr -cd '[:alnum:]-_.')
+          echo "name=helm-render-${safe_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload rendered manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact-name.outputs.name }}
+          path: .helm-render/
+          retention-days: 7

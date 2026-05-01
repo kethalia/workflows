@@ -1,0 +1,42 @@
+name: CI — Publish Validation
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version
+        type: number
+        required: false
+        default: 22
+      preview-packages:
+        description: Space-separated list of package directories for pkg-pr-new preview
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  # -------------------------------------------------------------------------
+  # Preview Release (PRs only, runs pkg-pr-new)
+  # -------------------------------------------------------------------------
+  preview:
+    name: Preview Release
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
+    needs: [resolve-runner]
+    if: inputs.preview-packages != '' && github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Publish preview
+        run: pnpx pkg-pr-new publish ${{ inputs.preview-packages }}
