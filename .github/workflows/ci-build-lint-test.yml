@@ -1,0 +1,333 @@
+name: CI — Build, Lint & Test
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version
+        type: number
+        required: false
+        default: 22
+      build-command:
+        description: Build command (e.g., "pnpm build")
+        type: string
+        required: true
+      lint-command:
+        description: Lint command (e.g., "pnpm lint")
+        type: string
+        required: false
+        default: ""
+      format-command:
+        description: Format check command (e.g., "pnpm format:check")
+        type: string
+        required: false
+        default: ""
+      test-command:
+        description: Test command (e.g., "pnpm test:coverage")
+        type: string
+        required: false
+        default: ""
+      typecheck-command:
+        description: Typecheck command (e.g., "pnpm typecheck")
+        type: string
+        required: false
+        default: ""
+      pre-lint-command:
+        description: Command to run before lint (e.g., build dependency packages)
+        type: string
+        required: false
+        default: ""
+      test-node-versions:
+        description: JSON array of Node versions for test matrix
+        type: string
+        required: false
+        default: "[20, 22]"
+      artifact-paths:
+        description: Newline-separated paths to upload after build
+        type: string
+        required: true
+      coverage-artifact-name:
+        description: Name for coverage artifact
+        type: string
+        required: false
+        default: "coverage-reports"
+      build-cache-paths:
+        description: |
+          Newline-separated paths to cache across builds (e.g., .next/cache).
+          Cache is keyed on the lockfile + source file hashes so incremental
+          builds reuse prior compilation output. Leave empty to disable.
+        type: string
+        required: false
+        default: ""
+      build-cache-key-files:
+        description: |
+          Glob(s) for source files whose hash invalidates the build cache.
+          Defaults to common JS/TS source patterns.
+        type: string
+        required: false
+        default: "**/*.[jt]s\n**/*.[jt]sx"
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  # -------------------------------------------------------------------------
+  # Prepare: install dependencies once and cache node_modules so downstream
+  # jobs can restore instead of running `pnpm install` from scratch.
+  #
+  # Cache key includes pnpm-lock.yaml (deps) and any prisma schema files
+  # (consumers using `prisma generate` in postinstall — generated client is
+  # captured inside node_modules).
+  # -------------------------------------------------------------------------
+  prepare:
+    name: Prepare
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
+    needs: [resolve-runner]
+    outputs:
+      modules-key: ${{ steps.key.outputs.modules }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+      - id: key
+        name: Compute node_modules cache key
+        run: |
+          echo "modules=${{ runner.os }}-node${{ inputs.node-version }}-modules-${{ hashFiles('**/pnpm-lock.yaml', '**/schema.prisma') }}" >> "$GITHUB_OUTPUT"
+      - name: Cache node_modules
+        id: modules-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: ${{ steps.key.outputs.modules }}
+      - name: Install dependencies
+        if: steps.modules-cache.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+  # -------------------------------------------------------------------------
+  # Format check (parallel with lint + build)
+  # -------------------------------------------------------------------------
+  format:
+    name: Format
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
+    needs: [resolve-runner, prepare]
+    if: inputs.format-command != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+      - name: Restore node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: ${{ needs.prepare.outputs.modules-key }}
+      - name: Install (cache miss only)
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Restore prettier cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/prettier/.prettier-cache
+          key: ${{ runner.os }}-prettier-${{ hashFiles('**/pnpm-lock.yaml', '**/.prettierrc*', '**/prettier.config.*') }}
+          restore-keys: |
+            ${{ runner.os }}-prettier-
+      - run: ${{ inputs.format-command }}
+
+  # -------------------------------------------------------------------------
+  # Lint (parallel with format + build)
+  # -------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
+    needs: [resolve-runner, prepare]
+    if: inputs.lint-command != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+      - name: Restore node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: ${{ needs.prepare.outputs.modules-key }}
+      - name: Install (cache miss only)
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Pre-lint build
+        if: inputs.pre-lint-command != ''
+        run: ${{ inputs.pre-lint-command }}
+      - name: Restore eslint cache
+        uses: actions/cache@v4
+        with:
+          path: .eslintcache
+          key: ${{ runner.os }}-eslint-${{ hashFiles('**/pnpm-lock.yaml', '**/.eslintrc*', '**/eslint.config.*') }}
+          restore-keys: |
+            ${{ runner.os }}-eslint-
+      - run: ${{ inputs.lint-command }}
+
+  # -------------------------------------------------------------------------
+  # Build (parallel with format + lint)
+  # -------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
+    needs: [resolve-runner, prepare]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+      - name: Restore node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: ${{ needs.prepare.outputs.modules-key }}
+      - name: Install (cache miss only)
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Restore build cache
+        if: inputs.build-cache-paths != ''
+        uses: actions/cache@v4
+        with:
+          path: ${{ inputs.build-cache-paths }}
+          key: ${{ runner.os }}-build-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles(inputs.build-cache-key-files) }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-build-
+      - run: ${{ inputs.build-command }}
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: ${{ inputs.artifact-paths }}
+          include-hidden-files: true
+          retention-days: 1
+
+  # -------------------------------------------------------------------------
+  # Typecheck (needs build artifacts)
+  # -------------------------------------------------------------------------
+  typecheck:
+    name: Typecheck
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
+    needs: [resolve-runner, prepare, build]
+    if: inputs.typecheck-command != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+      - name: Restore node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: ${{ needs.prepare.outputs.modules-key }}
+      - name: Install (cache miss only)
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: packages
+      - name: Restore tsc incremental cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            **/*.tsbuildinfo
+            **/.tsbuildinfo
+          key: ${{ runner.os }}-tsbuildinfo-${{ hashFiles('**/pnpm-lock.yaml', '**/tsconfig*.json') }}
+          restore-keys: |
+            ${{ runner.os }}-tsbuildinfo-
+      - run: ${{ inputs.typecheck-command }}
+
+  # -------------------------------------------------------------------------
+  # Test (needs build, Node version matrix)
+  # -------------------------------------------------------------------------
+  test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
+    needs: [resolve-runner, prepare, build]
+    if: inputs.test-command != ''
+    strategy:
+      matrix:
+        node-version: ${{ fromJson(inputs.test-node-versions) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+      - name: Restore node_modules
+        if: matrix.node-version == inputs.node-version
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: ${{ needs.prepare.outputs.modules-key }}
+      - name: Install
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: packages
+      - name: Restore vitest transform cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.vite
+          key: ${{ runner.os }}-vitest-node${{ matrix.node-version }}-${{ hashFiles('**/pnpm-lock.yaml', '**/vitest.config.*', '**/vite.config.*') }}
+          restore-keys: |
+            ${{ runner.os }}-vitest-node${{ matrix.node-version }}-
+      - name: Run tests
+        run: ${{ inputs.test-command }}
+      - name: Upload coverage reports
+        if: matrix.node-version == inputs.node-version
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.coverage-artifact-name }}
+          path: coverage/
+          retention-days: 1
+
+  # -------------------------------------------------------------------------
+  # Coverage Report (PRs only)
+  # -------------------------------------------------------------------------
+  coverage:
+    name: Coverage Report
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
+    needs: [resolve-runner, test]
+    if: inputs.test-command != '' && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download coverage reports
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.coverage-artifact-name }}
+          path: coverage
+      - name: Coverage report
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json
+          json-final-path: coverage/coverage-final.json

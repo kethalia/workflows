@@ -1,0 +1,93 @@
+name: Release — Changesets
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version
+        type: number
+        required: false
+        default: 22
+      publish-command:
+        description: Command Changesets runs to publish (e.g. "pnpm release"). Leave empty to only open the Version PR.
+        type: string
+        required: false
+        default: ""
+      version-command:
+        description: Command Changesets runs to bump versions and write changelogs.
+        type: string
+        required: false
+        default: pnpm changeset version
+      setup-command:
+        description: Optional command to run after install and before version/publish (e.g. build).
+        type: string
+        required: false
+        default: ""
+      pr-title:
+        description: Title for the Version PR opened by Changesets.
+        type: string
+        required: false
+        default: "chore(release): version packages"
+      commit-message:
+        description: Commit message used by Changesets when versioning.
+        type: string
+        required: false
+        default: "chore(release): version packages"
+    secrets:
+      NPM_TOKEN:
+        description: npm auth token. Required when publish-command publishes to npm.
+        required: false
+      GH_PAT:
+        description: PAT used by changesets/action to open the Version PR. Falls back to GITHUB_TOKEN.
+        required: false
+    outputs:
+      published:
+        description: "true when changesets/action published one or more packages."
+        value: ${{ jobs.release.outputs.published }}
+      published-packages:
+        description: JSON array of packages published in this run.
+        value: ${{ jobs.release.outputs.publishedPackages }}
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  release:
+    name: Release
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
+    steps:
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          fetch-depth: 0
+
+      - name: Setup
+        if: inputs.setup-command != ''
+        run: ${{ inputs.setup-command }}
+
+      - name: Configure npm auth
+        if: inputs.publish-command != '' && secrets.NPM_TOKEN != ''
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+
+      - name: Changesets
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          version: ${{ inputs.version-command }}
+          publish: ${{ inputs.publish-command }}
+          title: ${{ inputs.pr-title }}
+          commit: ${{ inputs.commit-message }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

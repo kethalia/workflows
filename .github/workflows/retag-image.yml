@@ -1,0 +1,152 @@
+name: Retag — Single GHCR image
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: |
+          Image name under ghcr.io/<owner>/ (e.g. "chillpass"). Lowercased automatically.
+          Combined with the resolved owner to form the full reference ghcr.io/<owner>/<image>.
+        type: string
+        required: true
+      source-tag:
+        description: |
+          Existing tag on the image to retag from (e.g. "sha-abc1234"). The image must already
+          exist at ghcr.io/<owner>/<image>:<source-tag>; this workflow does NOT rebuild or push
+          new content. Manifest digests are preserved across the retag (verifiable via crane).
+        type: string
+        required: true
+      dest-tags:
+        description: |
+          Newline-separated list of destination tags to point at the same manifest digest as
+          source-tag (e.g. "v1.2.3\nlatest"). Empty lines are skipped.
+        type: string
+        required: true
+      registry:
+        description: Container registry hostname.
+        type: string
+        required: false
+        default: ghcr.io
+      owner:
+        description: |
+          Registry namespace owner. Defaults to the repository owner of the calling workflow
+          (lowercased). Override only if retagging into a different namespace.
+        type: string
+        required: false
+        default: ""
+    outputs:
+      source-digest:
+        description: sha256 manifest digest of the source-tag (post-retag, identical to dest digests).
+        value: ${{ jobs.retag.outputs.source-digest }}
+      dest-digests:
+        description: |
+          JSON array of objects { "tag": "<dest-tag>", "digest": "sha256:..." } for each dest tag.
+          All entries should equal source-digest — emitted explicitly so callers can assert
+          byte-identical manifest copies (no rebuild).
+        value: ${{ jobs.retag.outputs.dest-digests }}
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  retag:
+    name: Retag ${{ inputs.image }} (${{ inputs.source-tag }})
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      source-digest: ${{ steps.verify.outputs.source-digest }}
+      dest-digests: ${{ steps.verify.outputs.dest-digests }}
+    steps:
+      - name: Resolve owner + image reference
+        id: ref
+        env:
+          INPUT_OWNER: ${{ inputs.owner }}
+        run: |
+          set -euo pipefail
+          owner="${INPUT_OWNER:-${GITHUB_REPOSITORY_OWNER}}"
+          owner="${owner,,}"
+          image="${{ inputs.image }}"
+          image="${image,,}"
+          ref="${{ inputs.registry }}/${owner}/${image}"
+          echo "owner=${owner}" >> "$GITHUB_OUTPUT"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "Resolved image reference: ${ref}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ${{ inputs.registry }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.4
+
+      - name: Retag via buildx imagetools (no rebuild)
+        id: retag
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+          SOURCE_TAG: ${{ inputs.source-tag }}
+          DEST_TAGS: ${{ inputs.dest-tags }}
+        run: |
+          set -euo pipefail
+          src="${REF}:${SOURCE_TAG}"
+          echo "Source: ${src}"
+          # Validate source exists before mutating anything.
+          if ! crane manifest "${src}" >/dev/null 2>&1; then
+            echo "::error::Source image ${src} does not exist in registry" >&2
+            exit 1
+          fi
+          # Iterate dest tags (newline-separated).
+          while IFS= read -r raw; do
+            dest="$(echo "$raw" | tr -d '[:space:]')"
+            [ -z "$dest" ] && continue
+            target="${REF}:${dest}"
+            echo "::group::Retag -> ${target}"
+            docker buildx imagetools create --tag "${target}" "${src}"
+            echo "::endgroup::"
+          done <<<"${DEST_TAGS}"
+
+      - name: Verify digest equality
+        id: verify
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+          SOURCE_TAG: ${{ inputs.source-tag }}
+          DEST_TAGS: ${{ inputs.dest-tags }}
+        run: |
+          set -euo pipefail
+          src_digest="$(crane digest "${REF}:${SOURCE_TAG}")"
+          echo "source-digest=${src_digest}" >> "$GITHUB_OUTPUT"
+          echo "Source digest: ${src_digest}"
+          mismatch=0
+          dest_json='[]'
+          {
+            echo "## Retag verification — \`${REF}\`"
+            echo
+            echo "| tag | digest | match |"
+            echo "| --- | --- | --- |"
+            echo "| \`${SOURCE_TAG}\` (source) | \`${src_digest}\` | — |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          while IFS= read -r raw; do
+            dest="$(echo "$raw" | tr -d '[:space:]')"
+            [ -z "$dest" ] && continue
+            d="$(crane digest "${REF}:${dest}")"
+            mark="✅"
+            if [ "$d" != "$src_digest" ]; then
+              mark="❌"
+              mismatch=1
+            fi
+            echo "| \`${dest}\` | \`${d}\` | ${mark} |" >> "$GITHUB_STEP_SUMMARY"
+            dest_json="$(jq -c --arg t "$dest" --arg d "$d" '. + [{tag:$t,digest:$d}]' <<<"$dest_json")"
+          done <<<"${DEST_TAGS}"
+          echo "dest-digests=${dest_json}" >> "$GITHUB_OUTPUT"
+          if [ "$mismatch" = "1" ]; then
+            echo "::error::One or more destination tags do not match the source digest (rebuild detected)." >&2
+            exit 1
+          fi

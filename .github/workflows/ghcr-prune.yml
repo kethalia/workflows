@@ -1,0 +1,203 @@
+# Reusable GHCR retention pruner.
+#
+# Deletes stale `:pr-*` container versions older than `age-days` while preserving
+# any version tagged with `:sha-*`, `:v*`, `:latest`, `:edge`, or `:buildcache`.
+# `:buildcache` MUST stay protected — registry-backed BuildKit cache lives on it.
+#
+# This workflow is `workflow_call`-only by design (MEM055/MEM060): operator dispatch
+# and cron live on the caller, never on the reusable. Callers wire schedule and
+# `workflow_dispatch` themselves and pass the package list down.
+#
+# Required caller permissions:
+#   contents: read
+#   packages: write
+#
+# The caller's `GITHUB_TOKEN` must have `packages: write` on the org's GHCR namespace.
+
+name: Reusable — GHCR retention prune
+
+on:
+  workflow_call:
+    inputs:
+      org:
+        description: GitHub organization that owns the container packages. Lowercased automatically.
+        type: string
+        required: true
+      packages:
+        description: Newline- or comma-separated list of container package names under the org (e.g. "chillpass\nchillpass-auth").
+        type: string
+        required: true
+      pr-tag-pattern:
+        description: ERE matching tags considered "PR build" candidates for deletion.
+        type: string
+        required: false
+        default: '^pr-'
+      preserve-patterns:
+        description: ERE — if ANY tag on a version matches this, the version is kept regardless of age. Default protects sha-, v*, latest, edge, and buildcache.
+        type: string
+        required: false
+        default: '^sha-|^v[0-9]|^latest$|^edge$|^buildcache$'
+      age-days:
+        description: Minimum age in days before a pr-* version is eligible for deletion.
+        type: number
+        required: false
+        default: 14
+      dry-run:
+        description: When true, log WOULD-DELETE decisions without calling DELETE.
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  prune:
+    name: Prune stale ${{ inputs.pr-tag-pattern }} tags
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Prune stale container versions
+        env:
+          ORG_INPUT: ${{ inputs.org }}
+          PACKAGES_INPUT: ${{ inputs.packages }}
+          PR_TAG_PATTERN: ${{ inputs.pr-tag-pattern }}
+          PRESERVE_PATTERNS: ${{ inputs.preserve-patterns }}
+          AGE_DAYS: ${{ inputs.age-days }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+
+          # Defensive lowercase of the org slug (MEM069).
+          org="${ORG_INPUT,,}"
+
+          cutoff=$(date -u -d "${AGE_DAYS} days ago" +%s)
+          echo "Cutoff (epoch, UTC): ${cutoff} (${AGE_DAYS} days ago)"
+          echo "PR tag pattern:      ${PR_TAG_PATTERN}"
+          echo "Preserve patterns:   ${PRESERVE_PATTERNS}"
+          echo "Dry run:             ${DRY_RUN}"
+
+          # Split packages on whitespace and commas.
+          mapfile -t pkgs < <(printf '%s\n' "${PACKAGES_INPUT}" | tr ',' '\n' | awk 'NF')
+
+          deleted=0
+          would_delete=0
+          kept=0
+          untagged_skipped=0
+          idempotent_skipped=0
+
+          summary_table_rows=""
+
+          append_row() {
+            local pkg="$1" id="$2" tags="$3" action="$4"
+            # Escape pipe in tags for table safety.
+            local safe_tags="${tags//|/\\|}"
+            summary_table_rows+="| ${pkg} | ${id} | ${safe_tags} | ${action} |\n"
+          }
+
+          for pkg in "${pkgs[@]}"; do
+            echo "::group::Package ${pkg}"
+            page=1
+            while :; do
+              resp=$(gh api \
+                --header 'Accept: application/vnd.github+json' \
+                --header 'X-GitHub-Api-Version: 2022-11-28' \
+                "/orgs/${org}/packages/container/${pkg}/versions?per_page=100&page=${page}")
+
+              count=$(printf '%s' "${resp}" | jq 'length')
+              if [ "${count}" -eq 0 ]; then
+                break
+              fi
+
+              # Iterate versions on this page.
+              while IFS=$'\t' read -r vid updated_at tags_csv; do
+                tags="${tags_csv:-}"
+
+                if [ -z "${tags}" ]; then
+                  echo "SKIP-UNTAGGED ${pkg} ${vid}"
+                  untagged_skipped=$((untagged_skipped + 1))
+                  append_row "${pkg}" "${vid}" "(none)" "SKIP-UNTAGGED"
+                  continue
+                fi
+
+                # Preserve check: ANY tag matches preserve regex => keep.
+                if printf '%s\n' ${tags} | grep -qE "${PRESERVE_PATTERNS}"; then
+                  echo "KEEP ${pkg} ${vid} ${tags}"
+                  kept=$((kept + 1))
+                  append_row "${pkg}" "${vid}" "${tags}" "KEEP"
+                  continue
+                fi
+
+                # Delete eligibility requires BOTH: ALL tags match pr-tag-pattern AND age >= cutoff.
+                all_pr=true
+                for t in ${tags}; do
+                  if ! printf '%s' "${t}" | grep -qE "${PR_TAG_PATTERN}"; then
+                    all_pr=false
+                    break
+                  fi
+                done
+
+                if [ "${all_pr}" = "true" ]; then
+                  ts=$(date -u -d "${updated_at}" +%s)
+                  if [ "${ts}" -lt "${cutoff}" ]; then
+                    if [ "${DRY_RUN}" = "true" ]; then
+                      echo "WOULD-DELETE ${pkg} ${vid} ${tags}"
+                      would_delete=$((would_delete + 1))
+                      append_row "${pkg}" "${vid}" "${tags}" "WOULD-DELETE"
+                    else
+                      # API call: DELETE /orgs/<org>/packages/container/<pkg>/versions/<id>
+                      http_code=$(gh api \
+                        --method DELETE \
+                        --header 'Accept: application/vnd.github+json' \
+                        --header 'X-GitHub-Api-Version: 2022-11-28' \
+                        "/orgs/${org}/packages/container/${pkg}/versions/${vid}" \
+                        --silent -i 2>&1 | awk 'NR==1 {print $2; exit}' || true)
+                      # Fallback path: gh exits non-zero on 404; treat 404 as idempotent skip.
+                      if [ -z "${http_code}" ] || [ "${http_code}" = "204" ]; then
+                        echo "DELETE ${pkg} ${vid} ${tags}"
+                        deleted=$((deleted + 1))
+                        append_row "${pkg}" "${vid}" "${tags}" "DELETE"
+                      elif [ "${http_code}" = "404" ]; then
+                        echo "IDEMPOTENT-SKIP ${pkg} ${vid}"
+                        idempotent_skipped=$((idempotent_skipped + 1))
+                        append_row "${pkg}" "${vid}" "${tags}" "IDEMPOTENT-SKIP"
+                      else
+                        echo "::error::DELETE failed for ${pkg} ${vid} (HTTP ${http_code})"
+                        exit 1
+                      fi
+                      sleep 0.1
+                    fi
+                    continue
+                  fi
+                fi
+
+                echo "SKIP ${pkg} ${vid} ${tags}"
+                kept=$((kept + 1))
+                append_row "${pkg}" "${vid}" "${tags}" "SKIP"
+              done < <(printf '%s' "${resp}" | jq -r '.[] | [.id, .updated_at, ((.metadata.container.tags // []) | join(" "))] | @tsv')
+
+              page=$((page + 1))
+            done
+            echo "::endgroup::"
+          done
+
+          {
+            echo "## GHCR retention prune"
+            echo ""
+            echo "- Org: \`${org}\`"
+            echo "- Packages: \`${PACKAGES_INPUT}\`"
+            echo "- Age threshold: \`${AGE_DAYS}\` days"
+            echo "- Dry run: \`${DRY_RUN}\`"
+            echo ""
+            echo "| Package | Version ID | Tags | Action |"
+            echo "| --- | --- | --- | --- |"
+            printf '%b' "${summary_table_rows}"
+            echo "| **Totals** | kept=${kept} | deleted=${deleted} would-delete=${would_delete} | untagged-skipped=${untagged_skipped} idempotent-skipped=${idempotent_skipped} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          echo "Done. kept=${kept} deleted=${deleted} would_delete=${would_delete} untagged_skipped=${untagged_skipped} idempotent_skipped=${idempotent_skipped}"

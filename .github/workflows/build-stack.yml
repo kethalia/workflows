@@ -1,0 +1,111 @@
+# Reusable workflow: build a stack of Docker images on PR + push.
+#
+# Owns the orchestration that every consuming repo was duplicating: runner
+# resolution, short-SHA computation, matrix fan-out, and per-event tag policy.
+# Internally calls `build-and-push.yml` per service to keep the registry-backed
+# BuildKit cache contract in one place.
+#
+# Tag policy (applied to every service):
+#   - always: ghcr.io/<owner>/<image>:sha-<short>
+#   - on pull_request from same-repo: + ghcr.io/<owner>/<image>:pr-<num>-<sha>
+#
+# Caller requirements:
+#   permissions:
+#     contents: read
+#     packages: write
+#
+# Caller example:
+#   jobs:
+#     build:
+#       permissions:
+#         contents: read
+#         packages: write
+#       uses: kethalia/workflows/.github/workflows/build-stack.yml@main
+#       secrets: inherit
+#       with:
+#         push: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+#         services: |
+#           [
+#             {"image": "chillpass", "dockerfile": "Dockerfile"},
+#             {"image": "chillpass-auth", "dockerfile": "services/auth/Dockerfile"},
+#             {"image": "chillpass-storage", "dockerfile": "services/storage/Dockerfile"}
+#           ]
+name: Reusable — Build stack of Docker images
+
+on:
+  workflow_call:
+    inputs:
+      services:
+        description: |
+          JSON array of services to build. Each entry supports:
+            image       (required)  — GHCR image name (no owner, no tag). Lowercased downstream.
+            context     (optional)  — Docker build context. Default ".".
+            dockerfile  (optional)  — Dockerfile path relative to context. Default "Dockerfile".
+            platforms   (optional)  — Comma-separated. Default "linux/amd64".
+            build-args  (optional)  — Newline-separated KEY=VALUE. Default "".
+        type: string
+        required: true
+      push:
+        description: |
+          Whether to push tags and export build cache. Set false for fork-PR validation.
+          Typically: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        type: boolean
+        required: true
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  prep:
+    name: Prepare matrix
+    needs: [resolve-runner]
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      sha_short: ${{ steps.meta.outputs.sha_short }}
+      owner_lc: ${{ steps.meta.outputs.owner_lc }}
+    steps:
+      - id: meta
+        run: |
+          echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "owner_lc=${owner}" >> "$GITHUB_OUTPUT"
+      - id: matrix
+        env:
+          SERVICES_JSON: ${{ inputs.services }}
+        run: |
+          # Apply defaults and emit a {include: [...]} matrix object.
+          matrix=$(jq -c '{
+            include: [
+              .[] | {
+                image: .image,
+                context: (.context // "."),
+                dockerfile: (.dockerfile // "Dockerfile"),
+                platforms: (.platforms // "linux/amd64"),
+                "build-args": (.["build-args"] // "")
+              }
+            ]
+          }' <<< "$SERVICES_JSON")
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.image }}
+    needs: [prep]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prep.outputs.matrix) }}
+    uses: ./.github/workflows/build-and-push.yml
+    secrets: inherit
+    with:
+      image: ${{ matrix.image }}
+      context: ${{ matrix.context }}
+      dockerfile: ${{ matrix.dockerfile }}
+      platforms: ${{ matrix.platforms }}
+      build-args: ${{ matrix['build-args'] }}
+      push: ${{ inputs.push }}
+      tags: |
+        ghcr.io/${{ needs.prep.outputs.owner_lc }}/${{ matrix.image }}:sha-${{ needs.prep.outputs.sha_short }}
+        ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && format('ghcr.io/{0}/{1}:pr-{2}-{3}', needs.prep.outputs.owner_lc, matrix.image, github.event.pull_request.number, github.sha) || '' }}

@@ -1,0 +1,102 @@
+name: Release — Docker stack
+
+on:
+  workflow_call:
+    inputs:
+      images:
+        description: |
+          JSON map: { "<published-package-name>": { "image": "<ghcr-image-name>", "context": "<docker-context>", "dockerfile": "<dockerfile-path>" } }.
+          Keys must match `name` values in the changesets `publishedPackages` output;
+          only intersecting entries are published.
+        type: string
+        required: true
+      node-version:
+        description: Node.js version
+        type: number
+        required: false
+        default: 22
+    outputs:
+      published:
+        description: "'true' when changesets/action published one or more packages."
+        value: ${{ jobs.release.outputs.published }}
+      publish-matrix:
+        description: JSON matrix include array of resolved images to publish.
+        value: ${{ jobs.release.outputs.publish-matrix }}
+      version:
+        description: First published package version (convenience for callers releasing a single semver per run).
+        value: ${{ jobs.release.outputs.version }}
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  release:
+    name: Release
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: write
+    outputs:
+      published: ${{ steps.cs.outputs.published }}
+      publish-matrix: ${{ steps.intersect.outputs.matrix }}
+      version: ${{ steps.intersect.outputs.version }}
+    steps:
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          fetch-depth: 0
+
+      - name: Changesets
+        id: cs
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset version
+          publish: pnpm changeset tag
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Intersect publishedPackages with images map
+        id: intersect
+        if: steps.cs.outputs.published == 'true'
+        env:
+          PUBLISHED: ${{ steps.cs.outputs.publishedPackages }}
+          IMAGES: ${{ inputs.images }}
+        run: |
+          set -euo pipefail
+          matrix=$(jq -nc --argjson m "$IMAGES" --argjson p "$PUBLISHED" '
+            { include: [
+                $p[]
+                | . as $pkg
+                | ($m[$pkg.name] // empty)
+                | { name: $pkg.name, image: .image, context: (.context // "."), dockerfile: (.dockerfile // "Dockerfile"), version: $pkg.version }
+              ]
+            }
+          ')
+          echo "Resolved matrix: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          version=$(jq -r '.[0].version // ""' <<<"$PUBLISHED")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: [release]
+    if: |
+      needs.release.outputs.published == 'true'
+      && needs.release.outputs.publish-matrix != ''
+      && needs.release.outputs.publish-matrix != '{"include":[]}'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.release.outputs.publish-matrix) }}
+    uses: kethalia/workflows/.github/workflows/publish-docker-ghcr.yml@main
+    with:
+      image-name: ${{ matrix.image }}
+      version: ${{ matrix.version }}
+      context: ${{ matrix.context }}
+      dockerfile: ${{ matrix.dockerfile }}
+      push-latest: true
