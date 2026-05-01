@@ -1,6 +1,8 @@
 # kethalia/workflows
 
-Canonical home for the reusable GitHub Actions **workflows** and **composite actions** shared across the kethalia, chillwhales, and phlox-labs orgs. Consumers reference workflows via absolute `uses:` (e.g. `uses: kethalia/workflows/.github/workflows/ci-build-lint-test.yml@main`) — no per-repo copies, one place to fix, one place to evolve.
+Canonical home for the reusable GitHub Actions **workflows** and **composite actions** shared across the kethalia, chillwhales, and phlox-labs orgs. Consumers reference workflows via absolute `uses:` (e.g. `uses: kethalia/workflows/.github/workflows/ci-build-lint-test.yml@<version>`) — no per-repo copies, one place to fix, one place to evolve.
+
+> **Always pin to a specific released version** (e.g. `@v1.0.0`). The examples in this README use `@<version>` as a placeholder — substitute the tag you intend to consume. See [Versioning](#versioning) for the available ref styles and recommendations.
 
 See also: [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md) for the heavy/light runner resolution model used by `resolve-runner.yml` and downstream consumers.
 
@@ -28,36 +30,38 @@ See also: [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md) for t
 
 ## Consumer-side alias pattern
 
-Every consumer pins to `@main` today — until consumer migration stabilizes; the future move to `@v1` should be a single-line edit per repo. To make that future migration cheap, wrap each shared workflow you consume in a thin local alias under `.github/workflows/` in the consumer repo. The wrapper centralizes the pin so a future `@main → @v1` flip is one line per consumer, not N lines:
+Wrap each shared workflow you consume in a thin local alias under `.github/workflows/` in the consumer repo. The wrapper centralizes the pin so the eventual version bump is one line per consumer, not N lines:
 
 ```yaml
 name: ci
 on: [push, pull_request]
 jobs:
   ci:
-    uses: kethalia/workflows/.github/workflows/ci-build-lint-test.yml@main
+    uses: kethalia/workflows/.github/workflows/ci-build-lint-test.yml@<version>
     with:
       build-command: pnpm build
       artifact-paths: |
         dist
 ```
 
-When the migration to `@v1` happens, you change the `uses:` line in this wrapper from `@main` to `@v1` and every workflow run in that repo picks up the pinned tag — no edits to caller jobs, no PR sprawl.
+When you upgrade, you change the `uses:` line in this wrapper to the new tag and every workflow run in that repo picks it up — no edits to caller jobs, no PR sprawl.
 
 ## Versioning
 
+**Pin to a specific released version.** Examples in this README use `@<version>` as a placeholder — replace it with a real tag (e.g. `@v1.0.0`) before committing.
+
 Releases are cut by [Changesets](https://github.com/changesets/changesets). On push to `main`, `release.yml` opens (or updates) a `chore(release): version packages` PR. Merging that PR:
 
-1. Bumps `package.json`, regenerates `CHANGELOG.md`, and runs `scripts/sync-workflow-refs.mjs` so every internal `uses: kethalia/workflows/...@<ref>` cross-reference in this repo is rewritten to the new `@vX.Y.Z`. The released tag therefore references its own actions and workflows at the same version — no `@main` drift inside a release.
+1. Bumps `package.json`, regenerates `CHANGELOG.md`, and runs `scripts/sync-workflow-refs.mjs` so every internal `uses: kethalia/workflows/...@<ref>` cross-reference in this repo is rewritten to the new `@vX.Y.Z`. The released tag therefore references its own actions and workflows at the same version — no drift inside a release.
 2. Creates the immutable `vX.Y.Z` tag.
-3. The `tag-major` job force-moves the floating `vX` and `vX.Y` tags to the same SHA so consumers can pin to `@v1` or `@v1.0` and still receive non-breaking updates.
+3. The `tag-major` job force-moves the floating `vX` and `vX.Y` tags to the same SHA so consumers can opt into non-breaking updates by pinning to a moving major or minor.
 
-**Pinning recommendations for consumers:**
+**Pinning recommendations for consumers, in order of preference:**
 
-- `@vX.Y.Z` (e.g. `@v1.0.0`) — fully reproducible. Recommended for production callers.
-- `@vX.Y` (e.g. `@v1.0`) — receives patch fixes automatically; no minor or major drift.
-- `@vX` (e.g. `@v1`) — receives all non-breaking changes.
-- `@main` — **not** a true "latest HEAD" snapshot. Because internal `uses:` refs are pinned by the version PR, `main` references the *previous* release's actions until the next release PR rewrites them. Use only for testing unreleased changes, and expect cross-workflow refs on `main` to lag behind HEAD.
+- `@vX.Y.Z` (e.g. `@v1.0.0`) — **recommended.** Fully reproducible; CI runs are deterministic and a forced retag of a major or minor cannot silently change behavior.
+- `@vX.Y` (e.g. `@v1.0`) — receives patch fixes automatically; no minor or major drift. Acceptable when you trust the patch promise.
+- `@vX` (e.g. `@v1`) — receives all non-breaking changes. Convenient, but a minor release that introduces a regression hits every consumer at once.
+- `@main` — **not recommended.** Because internal `uses:` refs are pinned by the version PR, `main` references the *previous* release's actions until the next release PR rewrites them. Use only for ad-hoc testing of unreleased changes.
 
 Breaking changes ship as a new major (`v2`, `v3`, ...) and are announced via the Changesets release notes before merging.
 
@@ -83,7 +87,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: kethalia/workflows/.github/workflows/build-and-push.yml@main
+    uses: kethalia/workflows/.github/workflows/build-and-push.yml@<version>
     with:
       image: chillpass-smoke
       tags: |
@@ -105,7 +109,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: kethalia/workflows/.github/workflows/build-stack.yml@main
+    uses: kethalia/workflows/.github/workflows/build-stack.yml@<version>
     with:
       services: |
         [
@@ -137,7 +141,7 @@ File: [`ci-build-lint-test.yml`](.github/workflows/ci-build-lint-test.yml). Buil
 ```yaml
 jobs:
   ci:
-    uses: kethalia/workflows/.github/workflows/ci-build-lint-test.yml@main
+    uses: kethalia/workflows/.github/workflows/ci-build-lint-test.yml@<version>
     with:
       build-command: pnpm build
       artifact-paths: |
@@ -156,7 +160,7 @@ File: [`ci-changeset-check.yml`](.github/workflows/ci-changeset-check.yml). Veri
 ```yaml
 jobs:
   changeset-check:
-    uses: kethalia/workflows/.github/workflows/ci-changeset-check.yml@main
+    uses: kethalia/workflows/.github/workflows/ci-changeset-check.yml@<version>
 ```
 
 ### CI — Publish Validation
@@ -171,7 +175,7 @@ File: [`ci-publish-validation.yml`](.github/workflows/ci-publish-validation.yml)
 ```yaml
 jobs:
   publish-validation:
-    uses: kethalia/workflows/.github/workflows/ci-publish-validation.yml@main
+    uses: kethalia/workflows/.github/workflows/ci-publish-validation.yml@<version>
 ```
 
 ### CI — Quality Checks
@@ -193,7 +197,7 @@ File: [`ci-quality.yml`](.github/workflows/ci-quality.yml). Aggregate quality ga
 ```yaml
 jobs:
   quality:
-    uses: kethalia/workflows/.github/workflows/ci-quality.yml@main
+    uses: kethalia/workflows/.github/workflows/ci-quality.yml@<version>
 ```
 
 ### Reusable — GHCR retention prune
@@ -214,7 +218,7 @@ jobs:
   prune:
     permissions:
       packages: write
-    uses: kethalia/workflows/.github/workflows/ghcr-prune.yml@main
+    uses: kethalia/workflows/.github/workflows/ghcr-prune.yml@<version>
     with:
       org: chillwhales
       packages: |
@@ -236,7 +240,7 @@ File: [`helm-lint.yml`](.github/workflows/helm-lint.yml). Runs `helm lint` (opti
 ```yaml
 jobs:
   helm:
-    uses: kethalia/workflows/.github/workflows/helm-lint.yml@main
+    uses: kethalia/workflows/.github/workflows/helm-lint.yml@<version>
     with:
       charts: |
         charts/api
@@ -263,7 +267,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: kethalia/workflows/.github/workflows/publish-docker-ghcr.yml@main
+    uses: kethalia/workflows/.github/workflows/publish-docker-ghcr.yml@<version>
     with:
       image-name: chillpass-api
 ```
@@ -291,7 +295,7 @@ File: [`release-changesets.yml`](.github/workflows/release-changesets.yml). Runs
 ```yaml
 jobs:
   release:
-    uses: kethalia/workflows/.github/workflows/release-changesets.yml@main
+    uses: kethalia/workflows/.github/workflows/release-changesets.yml@<version>
     secrets: inherit
 ```
 
@@ -310,7 +314,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: kethalia/workflows/.github/workflows/release-docker-stack.yml@main
+    uses: kethalia/workflows/.github/workflows/release-docker-stack.yml@<version>
     with:
       images: |
         {
@@ -327,7 +331,7 @@ File: [`resolve-runner.yml`](.github/workflows/resolve-runner.yml). Emits `heavy
 ```yaml
 jobs:
   runners:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@main
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@<version>
   build:
     needs: runners
     runs-on: ${{ needs.runners.outputs.heavy }}
@@ -352,7 +356,7 @@ jobs:
   retag:
     permissions:
       packages: write
-    uses: kethalia/workflows/.github/workflows/retag-image.yml@main
+    uses: kethalia/workflows/.github/workflows/retag-image.yml@<version>
     with:
       image: chillpass
       source-tag: sha-abc1234
@@ -365,7 +369,7 @@ jobs:
 
 File: [`retag-smoke.yml`](.github/workflows/retag-smoke.yml). Manual smoke test for `retag-image.yml` — exercises the retag flow end-to-end against a disposable GHCR image. Triggered via `workflow_dispatch` (Actions UI). This is **not** a reusable workflow and is not invoked via `uses:`.
 
-The workflow file is published at `kethalia/workflows/.github/workflows/retag-smoke.yml@main` for inspection but is not callable; trigger it from the Actions tab of this repo.
+The workflow file is published at `kethalia/workflows/.github/workflows/retag-smoke.yml@<version>` for inspection but is not callable; trigger it from the Actions tab of this repo.
 
 ### Retag — Docker stack (promote on release)
 
@@ -383,7 +387,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: kethalia/workflows/.github/workflows/retag-stack.yml@main
+    uses: kethalia/workflows/.github/workflows/retag-stack.yml@<version>
     with:
       images: |
         {
@@ -406,7 +410,7 @@ File: [`verify-ghcr-tags.yml`](.github/workflows/verify-ghcr-tags.yml). Asserts 
 ```yaml
 jobs:
   verify:
-    uses: kethalia/workflows/.github/workflows/verify-ghcr-tags.yml@main
+    uses: kethalia/workflows/.github/workflows/verify-ghcr-tags.yml@<version>
     with:
       org: chillwhales
       packages: '["chillpass", "chillpass-auth"]'
