@@ -20,6 +20,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Persist GH_PAT (not the default GITHUB_TOKEN) into git's extraheader
+          # so subsequent `git push` from changesets/action can write to
+          # .github/workflows/*.yml. The env var on the changesets step alone
+          # is not enough — actions/checkout's extraheader takes precedence.
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
       - uses: pnpm/action-setup@v4
         with:
