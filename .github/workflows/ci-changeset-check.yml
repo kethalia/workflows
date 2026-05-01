@@ -24,7 +24,7 @@ jobs:
     needs: [resolve-runner]
     if: github.event_name == 'pull_request'
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.0
         with:
           node-version: ${{ inputs.node-version }}
           fetch-depth: 0
