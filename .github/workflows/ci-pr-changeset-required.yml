@@ -1,0 +1,61 @@
+name: CI — PR Changeset Required
+
+# Block PRs that modify reusable workflows or composite actions without
+# including a changeset. The auto-generated `changeset-release/main` PR is
+# exempt — it consumes changesets and re-pins internal `uses:` refs as part of
+# the version commit, so it intentionally has no pending changesets.
+#
+# Wrapper-job pattern: this workflow runs on every PR (no `paths:` filter) so
+# it always reports a status check, making it safe to mark required in branch
+# protection. Detection happens inside the job — the expensive pnpm steps are
+# gated on whether reusable workflow/action files actually changed.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Changeset required for workflow changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip on auto-release PR
+        if: github.head_ref == 'changeset-release/main'
+        run: echo "Auto-release PR; check not applicable."
+
+      - uses: actions/checkout@v4
+        if: github.head_ref != 'changeset-release/main'
+        with:
+          fetch-depth: 0
+
+      - id: changes
+        if: github.head_ref != 'changeset-release/main'
+        name: Detect reusable workflow/action changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="origin/${{ github.base_ref }}"
+          changed=$(git diff --name-only "$base"...HEAD -- \
+            '.github/workflows/' \
+            '.github/actions/' \
+            ':!.github/workflows/release.yml' \
+            ':!.github/workflows/ci-changeset-check.yml' \
+            ':!.github/workflows/ci-pr-changeset-required.yml')
+          if [ -n "$changed" ]; then
+            echo "needs_changeset=true" >> "$GITHUB_OUTPUT"
+            echo "Reusable workflow/action files changed:"
+            printf '%s\n' "$changed"
+          else
+            echo "needs_changeset=false" >> "$GITHUB_OUTPUT"
+            echo "No reusable workflow/action changes detected; check passes."
+          fi
+
+      - if: steps.changes.outputs.needs_changeset == 'true'
+        uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.0
+        with:
+          node-version: 22
+          fetch-depth: 0
+
+      - if: steps.changes.outputs.needs_changeset == 'true'
+        name: Verify a changeset is included
+        run: pnpm changeset status --since=origin/${{ github.base_ref }}
