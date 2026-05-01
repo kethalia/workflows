@@ -50,6 +50,9 @@ on:
 jobs:
   verify:
     runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -81,7 +84,7 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           org_lc="$(echo "${ORG}" | tr '[:upper:]' '[:lower:]')"
-          if ! gh api --paginate "/users/${org_lc}/packages/container/${IMAGE}/versions" \
+          if ! gh api --paginate "/orgs/${org_lc}/packages/container/${IMAGE}/versions" \
               --jq '.[].metadata.container.tags[]' \
             | grep -qx "${TAG}"; then
             echo "::error::${TAG} tag missing for ghcr.io/${org_lc}/${IMAGE}; the upstream build workflow must succeed before this PR can merge"

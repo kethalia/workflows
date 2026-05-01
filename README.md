@@ -27,7 +27,7 @@ See also: [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md) for t
 
 ## Consumer-side alias pattern
 
-Every consumer pins to `@main` today (per [DECISIONS.md D003](.gsd/DECISIONS.md) — `@main` until consumer migration stabilizes; future move to `@v1` should be a single-line edit per repo). To make that future migration cheap, wrap each shared workflow you consume in a thin local alias under `.github/workflows/` in the consumer repo. The wrapper centralizes the pin so a future `@main → @v1` flip is one line per consumer, not N lines:
+Every consumer pins to `@main` today — until consumer migration stabilizes; the future move to `@v1` should be a single-line edit per repo. To make that future migration cheap, wrap each shared workflow you consume in a thin local alias under `.github/workflows/` in the consumer repo. The wrapper centralizes the pin so a future `@main → @v1` flip is one line per consumer, not N lines:
 
 ```yaml
 name: ci

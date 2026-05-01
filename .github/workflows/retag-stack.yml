@@ -61,7 +61,7 @@ jobs:
       version: ${{ steps.intersect.outputs.version }}
       source-sha-short: ${{ steps.intersect.outputs.source-sha-short }}
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
+      - uses: ./.github/actions/setup-pnpm
         with:
           node-version: ${{ inputs.node-version }}
           fetch-depth: 0
@@ -124,7 +124,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.release.outputs.retag-matrix) }}
-    uses: kethalia/workflows/.github/workflows/retag-image.yml@main
+    uses: ./.github/workflows/retag-image.yml
     with:
       image: ${{ matrix.image }}
       source-tag: sha-${{ matrix.source-sha-short }}

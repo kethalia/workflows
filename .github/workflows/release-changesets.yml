@@ -64,7 +64,7 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
+      - uses: ./.github/actions/setup-pnpm
         with:
           node-version: ${{ inputs.node-version }}
           fetch-depth: 0

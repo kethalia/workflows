@@ -126,7 +126,6 @@ jobs:
           build-args: ${{ inputs.build-args }}
           tags: ${{ inputs.tags }}
           push: false
-          cache-from: type=registry,ref=${{ steps.ref.outputs.image-ref }}:buildcache
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
