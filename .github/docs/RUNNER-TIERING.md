@@ -1,7 +1,7 @@
 # Runner Tiering Proposal
 
 **Status:** Proposal
-**Scope:** All reusable workflows in `chillwhales/.github`
+**Scope:** All reusable workflows in `kethalia/workflows`
 
 ## Problem
 
@@ -106,8 +106,6 @@ reusables in this repo.
 |                               | `changeset-check`    | light  | changesets CLI status only                           |
 | `ci-changeset-check.yml`      | (single job)         | light  | same                                                 |
 | `ci-publish-validation.yml`   | (single job)         | light  | manifest/sha verification                            |
-| `ci-pr-review.yml`            | `pr_agent_review`    | light  | network-bound, idle waiting on Claude API           |
-|                               | `pr_agent_commands`  | light  | same                                                 |
 | `publish-docker-ghcr.yml`     | (build/push)         | heavy  | buildx multi-platform                                |
 | `release-docker-stack.yml`    | matrix publish       | heavy  | calls `publish-docker-ghcr.yml` per image            |
 | `release-changesets.yml`      | (version/publish)    | light  | changesets/action — minutes idle, seconds working    |
