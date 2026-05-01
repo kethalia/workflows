@@ -30,7 +30,12 @@ jobs:
         run: |
           set -euo pipefail
           base="origin/${{ github.base_ref }}"
-          changed=$(git diff --name-only "$base"...HEAD -- '.github/workflows/' '.github/actions/')
+          changed=$(git diff --name-only "$base"...HEAD -- \
+            '.github/workflows/' \
+            '.github/actions/' \
+            ':!.github/workflows/release.yml' \
+            ':!.github/workflows/ci-changeset-check.yml' \
+            ':!.github/workflows/ci-pr-changeset-required.yml')
           if [ -n "$changed" ]; then
             echo "needs_changeset=true" >> "$GITHUB_OUTPUT"
             echo "Reusable workflow/action files changed:"
