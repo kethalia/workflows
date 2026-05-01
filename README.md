@@ -7,6 +7,7 @@ See also: [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md) for t
 ## Table of Contents
 
 - [Consumer-side alias pattern](#consumer-side-alias-pattern)
+- [Versioning](#versioning)
 - [Workflows](#workflows)
   - [Reusable — Build and push Docker image to GHCR](#reusable--build-and-push-docker-image-to-ghcr) — `build-and-push.yml`
   - [Reusable — Build stack of Docker images](#reusable--build-stack-of-docker-images) — `build-stack.yml`
@@ -42,6 +43,23 @@ jobs:
 ```
 
 When the migration to `@v1` happens, you change the `uses:` line in this wrapper from `@main` to `@v1` and every workflow run in that repo picks up the pinned tag — no edits to caller jobs, no PR sprawl.
+
+## Versioning
+
+Releases are cut by [Changesets](https://github.com/changesets/changesets). On push to `main`, `release.yml` opens (or updates) a `chore(release): version packages` PR. Merging that PR:
+
+1. Bumps `package.json`, regenerates `CHANGELOG.md`, and runs `scripts/sync-workflow-refs.mjs` so every internal `uses: kethalia/workflows/...@<ref>` cross-reference in this repo is rewritten to the new `@vX.Y.Z`. The released tag therefore references its own actions and workflows at the same version — no `@main` drift inside a release.
+2. Creates the immutable `vX.Y.Z` tag.
+3. The `tag-major` job force-moves the floating `vX` and `vX.Y` tags to the same SHA so consumers can pin to `@v1` or `@v1.0` and still receive non-breaking updates.
+
+**Pinning recommendations for consumers:**
+
+- `@vX.Y.Z` (e.g. `@v1.0.0`) — fully reproducible. Recommended for production callers.
+- `@vX.Y` (e.g. `@v1.0`) — receives patch fixes automatically; no minor or major drift.
+- `@vX` (e.g. `@v1`) — receives all non-breaking changes.
+- `@main` — unstable; only use for testing changes to this repo before they're released.
+
+Breaking changes ship as a new major (`v2`, `v3`, ...) and are announced via the Changesets release notes before merging.
 
 ## Workflows
 

@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    name: Changesets
+    runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Changesets
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          version: pnpm run version
+          publish: pnpm changeset tag
+          title: "chore(release): version packages"
+          commit: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  tag-major:
+    name: Move floating major tag
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Move v{major} and v{major}.{minor} tags
+        env:
+          PUBLISHED: ${{ needs.release.outputs.publishedPackages }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          VERSION="$(echo "$PUBLISHED" | jq -r '.[0].version')"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "No version found in publishedPackages output; skipping."
+            exit 0
+          fi
+          MAJOR="v${VERSION%%.*}"
+          REST="${VERSION#*.}"
+          MINOR="${MAJOR}.${REST%%.*}"
+          echo "Tagging $MAJOR and $MINOR at $SHA"
+          # Capture the current remote tag SHAs (empty if the tag does not yet exist)
+          # so --force-with-lease only overwrites what we expect.
+          MAJOR_OLD="$(git ls-remote --tags origin "refs/tags/$MAJOR" | awk '{print $1}')"
+          MINOR_OLD="$(git ls-remote --tags origin "refs/tags/$MINOR" | awk '{print $1}')"
+          git tag -f "$MAJOR" "$SHA"
+          git tag -f "$MINOR" "$SHA"
+          git push --force-with-lease="refs/tags/$MAJOR:$MAJOR_OLD" origin "refs/tags/$MAJOR"
+          git push --force-with-lease="refs/tags/$MINOR:$MINOR_OLD" origin "refs/tags/$MINOR"
