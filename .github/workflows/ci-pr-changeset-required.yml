@@ -1,0 +1,45 @@
+name: CI — PR Changeset Required
+
+# Block PRs that modify reusable workflows or composite actions without
+# including a changeset. The auto-generated `changeset-release/main` PR is
+# exempt — it consumes changesets and re-pins internal `uses:` refs as part of
+# the version commit, so it intentionally has no pending changesets.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  resolve-runner:
+    uses: ./.github/workflows/resolve-runner.yml
+
+  check:
+    name: Changeset required for workflow changes
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    if: github.head_ref != 'changeset-release/main'
+    steps:
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.0
+        with:
+          node-version: 22
+          fetch-depth: 0
+
+      - id: changes
+        name: Detect reusable workflow/action changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="origin/${{ github.base_ref }}"
+          changed=$(git diff --name-only "$base"...HEAD -- '.github/workflows/' '.github/actions/')
+          if [ -n "$changed" ]; then
+            echo "needs_changeset=true" >> "$GITHUB_OUTPUT"
+            echo "Reusable workflow/action files changed:"
+            printf '%s\n' "$changed"
+          else
+            echo "needs_changeset=false" >> "$GITHUB_OUTPUT"
+            echo "No reusable workflow/action changes detected; skipping changeset check."
+          fi
+
+      - if: steps.changes.outputs.needs_changeset == 'true'
+        name: Verify a changeset is included
+        run: pnpm changeset status --since=origin/${{ github.base_ref }}
