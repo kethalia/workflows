@@ -45,7 +45,9 @@ jobs:
           # changes to .github/workflows/*.yml (via sync-workflow-refs.mjs),
           # which the default GITHUB_TOKEN cannot push without the
           # `workflows` permission. Use a fine-grained PAT with
-          # contents:write + workflows:write.
+          # contents:write + workflows:write + pull-requests:write
+          # (pull-requests:write is needed so changesets/action can open
+          # and update the version PR).
           GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
   tag-major:
