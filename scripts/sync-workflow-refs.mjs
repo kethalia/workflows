@@ -7,7 +7,7 @@
 // Idempotent: re-running with the same package.json version is a no-op.
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 const ROOT = process.cwd();
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
@@ -41,7 +41,7 @@ for (const file of targets) {
 	if (before !== after) {
 		writeFileSync(file, after);
 		changed++;
-		console.log(`sync-workflow-refs: pinned ${file.replace(ROOT + "/", "")} -> @${tag}`);
+		console.log(`sync-workflow-refs: pinned ${relative(ROOT, file)} -> @${tag}`);
 	}
 }
 console.log(`sync-workflow-refs: done (${changed} file(s) updated, target ${tag})`);

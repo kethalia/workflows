@@ -57,7 +57,7 @@ Releases are cut by [Changesets](https://github.com/changesets/changesets). On p
 - `@vX.Y.Z` (e.g. `@v1.0.0`) — fully reproducible. Recommended for production callers.
 - `@vX.Y` (e.g. `@v1.0`) — receives patch fixes automatically; no minor or major drift.
 - `@vX` (e.g. `@v1`) — receives all non-breaking changes.
-- `@main` — unstable; only use for testing changes to this repo before they're released.
+- `@main` — **not** a true "latest HEAD" snapshot. Because internal `uses:` refs are pinned by the version PR, `main` references the *previous* release's actions until the next release PR rewrites them. Use only for testing unreleased changes, and expect cross-workflow refs on `main` to lag behind HEAD.
 
 Breaking changes ship as a new major (`v2`, `v3`, ...) and are announced via the Changesets release notes before merging.
 
