@@ -43,7 +43,7 @@ jobs:
       publish-matrix: ${{ steps.intersect.outputs.matrix }}
       version: ${{ steps.intersect.outputs.version }}
     steps:
-      - uses: ./.github/actions/setup-pnpm
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@main
         with:
           node-version: ${{ inputs.node-version }}
           fetch-depth: 0
@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.release.outputs.publish-matrix) }}
-    uses: ./.github/workflows/publish-docker-ghcr.yml
+    uses: kethalia/workflows/.github/workflows/publish-docker-ghcr.yml@main
     with:
       image-name: ${{ matrix.image }}
       version: ${{ matrix.version }}

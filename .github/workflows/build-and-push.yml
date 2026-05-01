@@ -14,9 +14,11 @@
 #
 # push: false behavior:
 #   When `push` is false (e.g. PR validation from a fork without packages:write),
-#   we build only and SKIP `cache-to`. Read-only tokens can still pull cache via
-#   `cache-from` but cannot export, so writing would 403. Reads remain enabled
-#   so PRs benefit from prior cache without being able to poison it.
+#   we build only and SKIP both `cache-to` and `cache-from`. The GHCR login step
+#   is also gated on `push`, so without credentials a `cache-from` pull against
+#   the registry would fail. PR validation builds therefore run without registry
+#   cache; correctness is verified, and cache reuse resumes once changes land on
+#   a branch that runs with `push: true`.
 name: Reusable — Build and push Docker image to GHCR
 
 on:
