@@ -41,7 +41,12 @@ jobs:
           title: "chore(release): version packages"
           commit: "chore(release): version packages"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GH_PAT is required because changesets/action commits include
+          # changes to .github/workflows/*.yml (via sync-workflow-refs.mjs),
+          # which the default GITHUB_TOKEN cannot push without the
+          # `workflows` permission. Use a fine-grained PAT with
+          # contents:write + workflows:write.
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
   tag-major:
     name: Move floating major tag

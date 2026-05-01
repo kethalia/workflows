@@ -74,7 +74,7 @@ jobs:
         run: ${{ inputs.setup-command }}
 
       - name: Configure npm auth
-        if: inputs.publish-command != '' && secrets.NPM_TOKEN != ''
+        if: inputs.publish-command != '' && env.NPM_TOKEN != ''
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
