@@ -1,6 +1,6 @@
 {
   "name": "@kethalia/workflows",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Org-wide reusable GitHub Actions workflows and composite actions shared across kethalia, chillwhales, and phlox-labs.",
   "repository": {

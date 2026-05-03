@@ -45,7 +45,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.0
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.1
 
   release:
     name: Release
@@ -61,7 +61,7 @@ jobs:
       version: ${{ steps.intersect.outputs.version }}
       source-sha-short: ${{ steps.intersect.outputs.source-sha-short }}
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.1
         with:
           node-version: ${{ inputs.node-version }}
           fetch-depth: 0
@@ -124,7 +124,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.release.outputs.retag-matrix) }}
-    uses: kethalia/workflows/.github/workflows/retag-image.yml@v1.0.0
+    uses: kethalia/workflows/.github/workflows/retag-image.yml@v1.0.1
     with:
       image: ${{ matrix.image }}
       source-tag: sha-${{ matrix.source-sha-short }}

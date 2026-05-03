@@ -16,7 +16,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.0
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.1
 
   changeset-check:
     name: Changeset Check
@@ -24,7 +24,7 @@ jobs:
     needs: [resolve-runner]
     if: github.event_name == 'pull_request'
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.1
         with:
           node-version: ${{ inputs.node-version }}
           fetch-depth: 0
