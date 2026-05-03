@@ -41,7 +41,7 @@ jobs:
           push: true
           tags: ghcr.io/chillwhales/retag-smoke-test:${{ steps.tag.outputs.source-tag }}
           context: .
-          file: ./.github/workflows/retag-smoke.Dockerfile
+          file: ./.github/workflows/internal-retag-smoke.Dockerfile
 
   smoke-retag:
     needs: [seed]
