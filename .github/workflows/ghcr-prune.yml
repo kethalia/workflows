@@ -50,7 +50,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.1.0
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.1.1
 
   prune:
     name: Prune stale ${{ inputs.pr-tag-pattern }} tags

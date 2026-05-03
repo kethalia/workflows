@@ -20,7 +20,7 @@
 #       permissions:
 #         contents: read
 #         packages: write
-#       uses: kethalia/workflows/.github/workflows/build-stack.yml@v1.1.0
+#       uses: kethalia/workflows/.github/workflows/build-stack.yml@v1.1.1
 #       secrets: inherit
 #       with:
 #         push: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
@@ -54,7 +54,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.1.0
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.1.1
 
   prep:
     name: Prepare matrix
@@ -97,7 +97,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prep.outputs.matrix) }}
-    uses: kethalia/workflows/.github/workflows/build-and-push.yml@v1.1.0
+    uses: kethalia/workflows/.github/workflows/build-and-push.yml@v1.1.1
     secrets: inherit
     with:
       image: ${{ matrix.image }}
