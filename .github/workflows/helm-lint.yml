@@ -28,7 +28,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.1
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.1.0
 
   # -------------------------------------------------------------------------
   # Setup — split newline-separated charts input into JSON matrix
