@@ -35,11 +35,7 @@ on:
           source `:sha-<short>` tag from. When omitted, defaults to `github.sha`
           (current behavior — backwards compatible). Set this when the caller
           is gated on a `workflow_run` trigger so retag pins to the triggering
-          build's head SHA, e.g.:
-
-            with:
-              ref: ${{ github.event.workflow_run.head_sha }}
-
+          build's head SHA — pass the workflow_run event's head_sha as `ref`.
           Without this, `github.sha` resolves to the default branch HEAD at the
           moment the caller starts, which can race past the SHA the upstream
           build actually pushed `:sha-<short>` for.
