@@ -10,6 +10,15 @@ inputs:
     description: Number of commits to fetch (0 for full history)
     required: false
     default: "1"
+  ref:
+    description: |
+      Git ref (branch, tag, or full SHA) to check out. When omitted, falls back
+      to actions/checkout's default (github.sha for the calling workflow). Set
+      this when the caller is gated on a `workflow_run` trigger and needs to
+      pin to the triggering build's head SHA rather than the default-branch
+      HEAD at the moment the caller starts.
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -17,6 +26,7 @@ runs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: ${{ inputs.fetch-depth }}
+        ref: ${{ inputs.ref }}
 
     - uses: pnpm/action-setup@v4
 
