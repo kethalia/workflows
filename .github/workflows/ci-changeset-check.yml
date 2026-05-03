@@ -16,7 +16,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: ./.github/workflows/resolve-runner.yml
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.0
 
   changeset-check:
     name: Changeset Check

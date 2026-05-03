@@ -51,7 +51,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: ./.github/workflows/resolve-runner.yml
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.0
 
   # -------------------------------------------------------------------------
   # Package Verify (downloads build artifact from caller workflow)
