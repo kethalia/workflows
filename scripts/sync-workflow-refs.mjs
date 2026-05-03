@@ -24,7 +24,7 @@
 // Idempotent: re-running with the same package.json version is a no-op.
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative, basename, dirname } from "node:path";
+import { join, relative, basename, dirname, sep } from "node:path";
 
 const ROOT = process.cwd();
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
@@ -57,14 +57,18 @@ function shouldRewrite(file, contents) {
 	// Composite actions: action.yml / action.yaml
 	if (name === "action.yml" || name === "action.yaml") return true;
 
-	// Workflow files: only reusables (declare `workflow_call` trigger)
-	const isWorkflow = dirname(file).endsWith(`.github${"/"}workflows`);
+	// Workflow files: only reusables (declare `workflow_call` trigger).
+	// Normalize path separators so the check works on Windows too (node:path's
+	// `dirname` returns backslashes there).
+	const posixDir = dirname(file).split(sep).join("/");
+	const isWorkflow = posixDir.endsWith(".github/workflows");
 	if (!isWorkflow) return false;
 
-	// Cheap-but-correct check: a `workflow_call:` key under `on:`. The regex
-	// tolerates either short form (`on: workflow_call:`) or block form
-	// (`on:\n  workflow_call:`). False positives are unlikely because
-	// `workflow_call` is a reserved trigger name.
+	// Heuristic: match `workflow_call:` as a top-level key. We don't anchor to
+	// the `on:` block — that would require a YAML parser — but `workflow_call`
+	// is a reserved trigger name, so collisions elsewhere in the file are
+	// extremely unlikely. Tolerates either short form (`on: workflow_call:`)
+	// or block form (`on:\n  workflow_call:`).
 	return /^\s*workflow_call\s*:/m.test(contents) || /\bon:\s*workflow_call\b/.test(contents);
 }
 
