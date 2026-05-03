@@ -39,7 +39,6 @@ jobs:
             '.github/workflows/' \
             '.github/actions/' \
             ':!.github/workflows/internal-release.yml' \
-            ':!.github/workflows/ci-changeset-check.yml' \
             ':!.github/workflows/internal-ci-pr-changeset-required.yml' \
             ':!.github/workflows/internal-retag-smoke.yml' \
             ':!.github/workflows/internal-retag-smoke.Dockerfile')
