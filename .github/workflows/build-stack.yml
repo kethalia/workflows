@@ -54,7 +54,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: ./.github/workflows/resolve-runner.yml
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.0
 
   prep:
     name: Prepare matrix
@@ -97,7 +97,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prep.outputs.matrix) }}
-    uses: ./.github/workflows/build-and-push.yml
+    uses: kethalia/workflows/.github/workflows/build-and-push.yml@v1.0.0
     secrets: inherit
     with:
       image: ${{ matrix.image }}
