@@ -38,9 +38,10 @@ jobs:
           changed=$(git diff --name-only "$base"...HEAD -- \
             '.github/workflows/' \
             '.github/actions/' \
-            ':!.github/workflows/release.yml' \
-            ':!.github/workflows/ci-changeset-check.yml' \
-            ':!.github/workflows/ci-pr-changeset-required.yml')
+            ':!.github/workflows/internal-release.yml' \
+            ':!.github/workflows/internal-ci-pr-changeset-required.yml' \
+            ':!.github/workflows/internal-retag-smoke.yml' \
+            ':!.github/workflows/internal-retag-smoke.Dockerfile')
           if [ -n "$changed" ]; then
             echo "needs_changeset=true" >> "$GITHUB_OUTPUT"
             echo "Reusable workflow/action files changed:"
@@ -51,7 +52,7 @@ jobs:
           fi
 
       - if: steps.changes.outputs.needs_changeset == 'true'
-        uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.0
+        uses: ./.github/actions/setup-pnpm
         with:
           node-version: 22
           fetch-depth: 0

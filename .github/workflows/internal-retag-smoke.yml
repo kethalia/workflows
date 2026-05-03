@@ -13,7 +13,7 @@ permissions: {}
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.0
+    uses: ./.github/workflows/resolve-runner.yml
 
   seed:
     name: Seed throwaway source image
@@ -41,14 +41,14 @@ jobs:
           push: true
           tags: ghcr.io/chillwhales/retag-smoke-test:${{ steps.tag.outputs.source-tag }}
           context: .
-          file: ./.github/workflows/retag-smoke.Dockerfile
+          file: ./.github/workflows/internal-retag-smoke.Dockerfile
 
   smoke-retag:
     needs: [seed]
     permissions:
       contents: read
       packages: write
-    uses: kethalia/workflows/.github/workflows/retag-image.yml@v1.0.0
+    uses: ./.github/workflows/retag-image.yml
     with:
       image: retag-smoke-test
       source-tag: ${{ needs.seed.outputs.source-tag }}

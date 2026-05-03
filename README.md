@@ -24,7 +24,7 @@ See also: [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md) for t
   - [Release — Docker stack](#release--docker-stack) — `release-docker-stack.yml`
   - [Reusable — Resolve runner labels](#reusable--resolve-runner-labels) — `resolve-runner.yml`
   - [Retag — Single GHCR image](#retag--single-ghcr-image) — `retag-image.yml`
-  - [Smoke — retag-image](#smoke--retag-image) — `retag-smoke.yml`
+  - [Smoke — retag-image](#smoke--retag-image) — `internal-retag-smoke.yml`
   - [Retag — Docker stack (promote on release)](#retag--docker-stack-promote-on-release) — `retag-stack.yml`
   - [Reusable — Verify GHCR tags](#reusable--verify-ghcr-tags) — `verify-ghcr-tags.yml`
 
@@ -50,7 +50,7 @@ When you upgrade, you change the `uses:` line in this wrapper to the new tag and
 
 **Pin to a specific released version.** Examples in this README use `@<version>` as a placeholder — replace it with a real tag (e.g. `@v1.0.0`) before committing.
 
-Releases are cut by [Changesets](https://github.com/changesets/changesets). On push to `main`, `release.yml` opens (or updates) a `chore(release): version packages` PR. Merging that PR:
+Releases are cut by [Changesets](https://github.com/changesets/changesets). On push to `main`, `internal-release.yml` opens (or updates) a `chore(release): version packages` PR. Merging that PR:
 
 1. Bumps `package.json`, regenerates `CHANGELOG.md`, and runs `scripts/sync-workflow-refs.mjs` so every internal `uses: kethalia/workflows/...@<ref>` cross-reference in this repo is rewritten to the new `@vX.Y.Z`. The released tag therefore references its own actions and workflows at the same version — no drift inside a release.
 2. Creates the immutable `vX.Y.Z` tag.
@@ -367,9 +367,9 @@ jobs:
 
 ### Smoke — retag-image
 
-File: [`retag-smoke.yml`](.github/workflows/retag-smoke.yml). Manual smoke test for `retag-image.yml` — exercises the retag flow end-to-end against a disposable GHCR image. Triggered via `workflow_dispatch` (Actions UI). This is **not** a reusable workflow and is not invoked via `uses:`.
+File: [`internal-retag-smoke.yml`](.github/workflows/internal-retag-smoke.yml). Manual smoke test for `retag-image.yml` — exercises the retag flow end-to-end against a disposable GHCR image. Triggered via `workflow_dispatch` (Actions UI). This is **not** a reusable workflow and is not invoked via `uses:`.
 
-The workflow file is published at `kethalia/workflows/.github/workflows/retag-smoke.yml@<version>` for inspection but is not callable; trigger it from the Actions tab of this repo.
+The workflow file is published at `kethalia/workflows/.github/workflows/internal-retag-smoke.yml@<version>` for inspection but is not callable; trigger it from the Actions tab of this repo.
 
 ### Retag — Docker stack (promote on release)
 
