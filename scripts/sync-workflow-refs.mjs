@@ -1,13 +1,30 @@
 #!/usr/bin/env node
 // Rewrites internal `kethalia/workflows/...@<ref>` uses: lines in this repo's
-// own workflows and composite actions to pin them to the version in
+// own REUSABLE workflows and composite actions to pin them to the version in
 // package.json. Runs from the `version` npm script after `changeset version`,
 // so the tag created for vX.Y.Z references its own actions at @vX.Y.Z.
+//
+// Why absolute refs in reusables: GitHub's nested-reusable resolver mishandles
+// annotated tags when an outer caller pins `@vX.Y.Z` and the inner ref is
+// relative (`./.github/workflows/...`). Pinning the inner ref absolutely
+// dodges the bug entirely.
+//
+// Why we SKIP non-reusable workflows: files triggered by `push`, `pull_request`,
+// `workflow_dispatch`, `schedule`, etc. only ever run inside this repo on the
+// commit being tested. They're not consumed transitively by external callers,
+// so they're immune to the annotated-tag bug. They MUST keep relative refs —
+// otherwise the auto-generated "Version Packages" PR rewrites them to point at
+// `@vX.Y.Z` BEFORE that tag exists, causing the PR's own CI to fail with
+// "workflow was not found" forever (chicken-and-egg).
+//
+// Detection rule: a workflow is treated as reusable iff its `on:` block
+// contains a `workflow_call` trigger. Composite actions (`.github/actions/.../action.yml`)
+// are always rewritten — they have no `on:` block and are inherently reusable.
 //
 // Idempotent: re-running with the same package.json version is a no-op.
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, basename, dirname } from "node:path";
 
 const ROOT = process.cwd();
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
@@ -32,11 +49,39 @@ function walk(dir, out = []) {
 	return out;
 }
 
+// Returns true if the file should have its kethalia/workflows refs rewritten
+// to the release tag. Composite actions (action.yml) are always rewritten.
+// Workflow files are rewritten only when they declare `workflow_call` in `on:`.
+function shouldRewrite(file, contents) {
+	const name = basename(file);
+	// Composite actions: action.yml / action.yaml
+	if (name === "action.yml" || name === "action.yaml") return true;
+
+	// Workflow files: only reusables (declare `workflow_call` trigger)
+	const isWorkflow = dirname(file).endsWith(`.github${"/"}workflows`);
+	if (!isWorkflow) return false;
+
+	// Cheap-but-correct check: a `workflow_call:` key under `on:`. The regex
+	// tolerates either short form (`on: workflow_call:`) or block form
+	// (`on:\n  workflow_call:`). False positives are unlikely because
+	// `workflow_call` is a reserved trigger name.
+	return /^\s*workflow_call\s*:/m.test(contents) || /\bon:\s*workflow_call\b/.test(contents);
+}
+
 const targets = walk(join(ROOT, ".github"));
 
 let changed = 0;
+let skipped = 0;
 for (const file of targets) {
 	const before = readFileSync(file, "utf8");
+	if (!shouldRewrite(file, before)) {
+		if (REF_RE.test(before)) {
+			skipped++;
+			console.log(`sync-workflow-refs: skipped ${relative(ROOT, file)} (internal — relative refs preserved)`);
+		}
+		REF_RE.lastIndex = 0;
+		continue;
+	}
 	const after = before.replace(REF_RE, `$1@${tag}`);
 	if (before !== after) {
 		writeFileSync(file, after);
@@ -44,4 +89,4 @@ for (const file of targets) {
 		console.log(`sync-workflow-refs: pinned ${relative(ROOT, file)} -> @${tag}`);
 	}
 }
-console.log(`sync-workflow-refs: done (${changed} file(s) updated, target ${tag})`);
+console.log(`sync-workflow-refs: done (${changed} file(s) updated, ${skipped} internal file(s) skipped, target ${tag})`);

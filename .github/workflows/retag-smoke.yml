@@ -13,7 +13,7 @@ permissions: {}
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.0
+    uses: ./.github/workflows/resolve-runner.yml
 
   seed:
     name: Seed throwaway source image
@@ -48,7 +48,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: kethalia/workflows/.github/workflows/retag-image.yml@v1.0.0
+    uses: ./.github/workflows/retag-image.yml
     with:
       image: retag-smoke-test
       source-tag: ${{ needs.seed.outputs.source-tag }}

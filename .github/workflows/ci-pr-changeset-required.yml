@@ -51,7 +51,7 @@ jobs:
           fi
 
       - if: steps.changes.outputs.needs_changeset == 'true'
-        uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.0
+        uses: ./.github/actions/setup-pnpm
         with:
           node-version: 22
           fetch-depth: 0
