@@ -1,5 +1,28 @@
 # @kethalia/workflows
 
+## 1.0.1
+
+### Patch Changes
+
+- 8530bf5: Replace relative `uses: ./.github/workflows/*.yml` references inside reusable workflows with absolute `kethalia/workflows/.github/workflows/*.yml@<tag>` references.
+
+  Annotated tags (e.g. `v1.0.0`) trigger a GitHub Actions resolver bug on `push` and `schedule` events: the resolver records the tag-object SHA and then cannot walk relative paths against it, causing nested reusable lookups to fail with "workflow was not found" and the workflow to load with 0 jobs. Absolute references skip the relative-lookup code path entirely and resolve correctly under all event types. The `version` script (`scripts/sync-workflow-refs.mjs`) keeps these refs pinned to the current package version on every release.
+
+- f8a9b26: Restore relative `uses:` refs in internal-only workflows and rename them with an `internal-` prefix.
+
+  PR #9 over-applied the absolute-refs fix to every workflow. Internal workflows (those triggered by `push`, `pull_request`, or `workflow_dispatch`) only ever run inside this repo and are immune to the nested-reusable annotated-tag bug. Pinning them to absolute refs created a chicken-and-egg problem: `sync-workflow-refs.mjs` would rewrite them to `@vX.Y.Z` on the auto-generated "Version Packages" PR, but `vX.Y.Z` doesn't exist until that PR merges, so the PR's own CI failed to resolve its references and blocked every release.
+
+  Internal workflows now use relative refs (`./.github/workflows/...`, `./.github/actions/...`); the sync script detects reusables by the presence of a `workflow_call` trigger and only rewrites those plus composite actions. The script normalizes path separators so the workflow-directory check works on Windows, and the `workflow_call` detection comment clarifies it's a heuristic rather than `on:`-block-anchored.
+
+  Renames (so reusable vs internal workflows are distinguishable from the file tree alone):
+
+  - `release.yml` → `internal-release.yml`
+  - `ci-pr-changeset-required.yml` → `internal-ci-pr-changeset-required.yml`
+  - `retag-smoke.yml` → `internal-retag-smoke.yml`
+  - `retag-smoke.Dockerfile` → `internal-retag-smoke.Dockerfile`
+
+  If branch protection rules reference required checks by job name from `release.yml` or `ci-pr-changeset-required.yml`, update them after this releases.
+
 ## 1.0.0
 
 ### Major Changes

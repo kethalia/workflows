@@ -28,7 +28,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.0
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.0.1
 
   release:
     name: Release
@@ -43,7 +43,7 @@ jobs:
       publish-matrix: ${{ steps.intersect.outputs.matrix }}
       version: ${{ steps.intersect.outputs.version }}
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v1.0.1
         with:
           node-version: ${{ inputs.node-version }}
           fetch-depth: 0
@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.release.outputs.publish-matrix) }}
-    uses: kethalia/workflows/.github/workflows/publish-docker-ghcr.yml@v1.0.0
+    uses: kethalia/workflows/.github/workflows/publish-docker-ghcr.yml@v1.0.1
     with:
       image-name: ${{ matrix.image }}
       version: ${{ matrix.version }}
