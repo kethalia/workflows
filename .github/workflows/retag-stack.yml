@@ -29,6 +29,23 @@ on:
         type: string
         required: false
         default: ghcr.io
+      ref:
+        description: |
+          Git ref (branch, tag, or full SHA) to check out and to derive the
+          source `:sha-<short>` tag from. When omitted, defaults to `github.sha`
+          (current behavior — backwards compatible). Set this when the caller
+          is gated on a `workflow_run` trigger so retag pins to the triggering
+          build's head SHA, e.g.:
+
+            with:
+              ref: ${{ github.event.workflow_run.head_sha }}
+
+          Without this, `github.sha` resolves to the default branch HEAD at the
+          moment the caller starts, which can race past the SHA the upstream
+          build actually pushed `:sha-<short>` for.
+        type: string
+        required: false
+        default: ""
     outputs:
       published:
         description: "'true' when changesets/action published one or more packages."
@@ -65,6 +82,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           fetch-depth: 0
+          ref: ${{ inputs.ref }}
 
       - name: Changesets
         id: cs
@@ -83,9 +101,25 @@ jobs:
         env:
           PUBLISHED: ${{ steps.cs.outputs.publishedPackages }}
           IMAGES: ${{ inputs.images }}
+          INPUT_REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
-          short="${GITHUB_SHA:0:7}"
+          # Resolve source SHA: prefer the caller-pinned ref (for workflow_run
+          # gating), otherwise fall back to GITHUB_SHA. INPUT_REF may be a full
+          # 40-char SHA, a short SHA, a branch, or a tag — only a 40-char SHA
+          # is used directly; anything else is resolved via `git rev-parse`
+          # against the checked-out tree (fetch-depth: 0 above guarantees the
+          # ref is reachable).
+          if [ -n "${INPUT_REF}" ]; then
+            if [[ "${INPUT_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+              full_sha="${INPUT_REF}"
+            else
+              full_sha="$(git rev-parse "${INPUT_REF}")"
+            fi
+          else
+            full_sha="${GITHUB_SHA}"
+          fi
+          short="${full_sha:0:7}"
           matrix=$(jq -nc --argjson m "$IMAGES" --argjson p "$PUBLISHED" --arg s "$short" '
             { include: [
                 $p[]
