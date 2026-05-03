@@ -114,7 +114,10 @@ jobs:
             if [[ "${INPUT_REF}" =~ ^[0-9a-f]{40}$ ]]; then
               full_sha="${INPUT_REF}"
             else
-              full_sha="$(git rev-parse "${INPUT_REF}")"
+              # ^{commit} peels annotated tags to their commit SHA;
+              # --end-of-options prevents refs starting with `-` from being
+              # parsed as options.
+              full_sha="$(git rev-parse --verify --end-of-options "${INPUT_REF}^{commit}")"
             fi
           else
             full_sha="${GITHUB_SHA}"
