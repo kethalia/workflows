@@ -16,7 +16,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.3.2
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.3.3
 
   # -------------------------------------------------------------------------
   # Preview Release (PRs only, runs pkg-pr-new)
