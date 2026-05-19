@@ -1,0 +1,193 @@
+name: CI — Visual Regression Tests
+
+# Reusable workflow that runs Playwright-based visual regression tests inside
+# the pinned `mcr.microsoft.com/playwright` container, with a peer `label-gate`
+# job that fails closed when committed baseline screenshots change without an
+# approval label on the PR.
+#
+# Topology: `visual-tests` runs the suite; `label-gate` runs on `pull_request`
+# events and diffs against the base branch. Both are intended as required
+# branch-protection checks.
+
+on:
+  workflow_call:
+    inputs:
+      playwright-image:
+        description: Container image to run the suite in (Playwright official image recommended).
+        type: string
+        required: false
+        default: mcr.microsoft.com/playwright
+      playwright-image-tag:
+        description: |
+          Image tag matching the @playwright/test version the repo uses
+          (e.g. "v1.56.0-jammy"). Mismatching the SDK and image tag silently
+          drifts renders — keep them in lockstep.
+        type: string
+        required: true
+      browsers-path:
+        description: |
+          PLAYWRIGHT_BROWSERS_PATH for the image. The official Playwright
+          containers ship browsers under /ms-playwright; override only if a
+          custom image stores them elsewhere.
+        type: string
+        required: false
+        default: /ms-playwright
+      node-version:
+        description: Node.js version (the Playwright image ships Node already; this only affects local fallbacks).
+        type: number
+        required: false
+        default: 22
+      pnpm-version:
+        description: pnpm version to activate via corepack.
+        type: string
+        required: false
+        default: 9.15.9
+      install-command:
+        description: Dependency install command.
+        type: string
+        required: false
+        default: pnpm install --frozen-lockfile
+      test-command:
+        description: |
+          Command that runs the visual regression suite. Should produce an
+          HTML report at the path under `report-paths` so the failure
+          artifact upload has something to capture.
+        type: string
+        required: true
+      report-paths:
+        description: |
+          Newline-separated paths to upload on failure (Playwright HTML report
+          plus the per-test-results dir). Use the same multiline format
+          `actions/upload-artifact` accepts.
+        type: string
+        required: false
+        default: |
+          packages/visual-tests/playwright-report
+          packages/visual-tests/test-results
+          !packages/visual-tests/playwright/.cache
+      screenshots-path:
+        description: |
+          Path (relative to repo root) where committed baseline PNGs live.
+          The label-gate job diffs this directory against the PR base branch.
+        type: string
+        required: false
+        default: packages/visual-tests/src/__screenshots__/
+      approval-label:
+        description: Label that must be present on the PR for baseline diffs to land.
+        type: string
+        required: false
+        default: baselines:approved
+      timeout-minutes:
+        description: Per-job timeout for the visual-tests run.
+        type: number
+        required: false
+        default: 30
+      artifact-retention-days:
+        description: Retention for the failure-artifact upload.
+        type: number
+        required: false
+        default: 14
+
+concurrency:
+  group: visual-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    container:
+      image: ${{ inputs.playwright-image }}:${{ inputs.playwright-image-tag }}
+      options: --ipc=host
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ inputs.browsers-path }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable corepack and activate pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${{ inputs.pnpm-version }} --activate
+
+      - name: Compute pnpm store directory
+        id: pnpm-cache
+        run: echo "dir=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.dir }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Run visual tests
+        run: ${{ inputs.test-command }}
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ inputs.report-paths }}
+          retention-days: ${{ inputs.artifact-retention-days }}
+          compression-level: 6
+          if-no-files-found: ignore
+
+  label-gate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect screenshot changes
+        id: detect
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          SCREENSHOTS_PATH: ${{ inputs.screenshots-path }}
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only "origin/${BASE_REF}...HEAD" -- "${SCREENSHOTS_PATH}" || true)
+          if [ -n "$CHANGED" ]; then
+            echo "Screenshot baseline changes detected:"
+            echo "$CHANGED"
+            {
+              echo 'changed<<EOF'
+              echo "$CHANGED"
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "No screenshot baseline changes."
+            echo 'changed=' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Enforce approval label on screenshot changes
+        env:
+          HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, inputs.approval-label) }}
+          CHANGED: ${{ steps.detect.outputs.changed }}
+          APPROVAL_LABEL: ${{ inputs.approval-label }}
+          SCREENSHOTS_PATH: ${{ inputs.screenshots-path }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CHANGED" ] && [ "$HAS_LABEL" = "false" ]; then
+            echo "::error::Unlabeled screenshot baseline change detected."
+            echo "The following files under ${SCREENSHOTS_PATH} changed:"
+            echo "$CHANGED"
+            echo ""
+            echo "Remediation: a maintainer must apply the '${APPROVAL_LABEL}' label to this PR"
+            echo "after reviewing the baseline diff."
+            exit 1
+          fi
+          echo "label-gate OK"
