@@ -129,11 +129,14 @@ jobs:
     permissions:
       # `write` is required when `update-baselines: true` to push the
       # regenerated screenshots back to the source branch. The `inputs`
-      # context is not evaluated in `jobs.<id>.permissions` (only `github`
-      # is), so we declare `write` unconditionally here. Callers running in
-      # test-only mode should cap the effective token via their own job-
-      # level `permissions: contents: read` block.
-      contents: write
+      # context is not evaluated in `jobs.<id>.permissions` — only `github`
+      # is. We key on `github.event_name == 'workflow_dispatch'` because
+      # baseline-update runs are always manually dispatched; PR/push runs
+      # then get `read`, which avoids the startup_failure that occurs when
+      # a reusable demands more permissions than the caller-level
+      # `permissions:` grants. Callers that need baseline updates on other
+      # triggers must grant `contents: write` at their job level.
+      contents: ${{ github.event_name == 'workflow_dispatch' && 'write' || 'read' }}
     container:
       image: ${{ inputs.playwright-image }}:${{ inputs.playwright-image-tag }}
       options: --ipc=host
