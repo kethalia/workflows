@@ -126,17 +126,13 @@ jobs:
   visual-tests:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
-    permissions:
-      # `write` is required when `update-baselines: true` to push the
-      # regenerated screenshots back to the source branch. The `inputs`
-      # context is not evaluated in `jobs.<id>.permissions` — only `github`
-      # is. We key on `github.event_name == 'workflow_dispatch'` because
-      # baseline-update runs are always manually dispatched; PR/push runs
-      # then get `read`, which avoids the startup_failure that occurs when
-      # a reusable demands more permissions than the caller-level
-      # `permissions:` grants. Callers that need baseline updates on other
-      # triggers must grant `contents: write` at their job level.
-      contents: ${{ github.event_name == 'workflow_dispatch' && 'write' || 'read' }}
+    # No `permissions:` block here. GitHub Actions does NOT evaluate
+    # expressions in `jobs.<id>.permissions`, and declaring a static
+    # `contents: write` on a reusable would exceed the token scope of
+    # test-only callers that grant only `contents: read`, producing a
+    # startup_failure. Callers that need `update-baselines: true` must
+    # grant `contents: write` on the calling job (or workflow)
+    # `permissions:` — the reusable then inherits that elevated scope.
     container:
       image: ${{ inputs.playwright-image }}:${{ inputs.playwright-image-tag }}
       options: --ipc=host
