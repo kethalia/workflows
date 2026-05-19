@@ -127,11 +127,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
-      # `write` is required only for `update-baselines: true` to push the
-      # regenerated screenshots back to the source branch. In normal test
-      # mode the job never writes; the caller may further restrict via its
-      # own `permissions:` block.
-      contents: ${{ inputs.update-baselines && 'write' || 'read' }}
+      # `write` is required when `update-baselines: true` to push the
+      # regenerated screenshots back to the source branch. The `inputs`
+      # context is not evaluated in `jobs.<id>.permissions` (only `github`
+      # is), so we declare `write` unconditionally here. Callers running in
+      # test-only mode should cap the effective token via their own job-
+      # level `permissions: contents: read` block.
+      contents: write
     container:
       image: ${{ inputs.playwright-image }}:${{ inputs.playwright-image-tag }}
       options: --ipc=host
