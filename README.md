@@ -426,11 +426,10 @@ File: [`visual-tests.yml`](.github/workflows/visual-tests.yml). Runs a Playwrigh
 | `playwright-image` | string | false | `mcr.microsoft.com/playwright` | Container image to run the suite in. |
 | `playwright-image-tag` | string | true | — | Image tag matching the `@playwright/test` version (e.g. `v1.56.0-jammy`). Keep in lockstep with the SDK. |
 | `browsers-path` | string | false | `/ms-playwright` | `PLAYWRIGHT_BROWSERS_PATH` for the image. Override only for custom images. |
-| `node-version` | number | false | `22` | Node.js version (the Playwright image already ships Node). |
 | `pnpm-version` | string | false | `9.15.9` | pnpm version activated via corepack. |
 | `install-command` | string | false | `pnpm install --frozen-lockfile` | Dependency install command. |
 | `test-command` | string | true | — | Visual regression command. Must emit a Playwright HTML report at the path under `report-paths` so the failure-artifact upload has content to capture. |
-| `report-paths` | string | false | Playwright defaults | Newline-separated `actions/upload-artifact` paths. |
+| `report-paths` | string | true | — | Newline-separated `actions/upload-artifact` paths (HTML report + per-test results dir). Project-specific; the caller must supply them. |
 | `screenshots-path` | string | false | `packages/visual-tests/src/__screenshots__/` | Path to the committed baseline tree, diffed by `label-gate`. |
 | `approval-label` | string | false | `baselines:approved` | Label required on the PR for baseline diffs to land. |
 | `timeout-minutes` | number | false | `30` | Per-job timeout for the visual-tests run. |
@@ -450,4 +449,8 @@ jobs:
     with:
       playwright-image-tag: v1.56.0-jammy
       test-command: pnpm turbo run test:visual --filter=@top-decor/visual-tests -- --reporter=line,html
+      report-paths: |
+        packages/visual-tests/playwright-report
+        packages/visual-tests/test-results
+        !packages/visual-tests/playwright/.cache
 ```

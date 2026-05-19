@@ -1,4 +1,4 @@
-name: CI — Visual Regression Tests
+name: Reusable — Visual Regression Tests
 
 # Reusable workflow that runs Playwright-based visual regression tests inside
 # the pinned `mcr.microsoft.com/playwright` container, with a peer `label-gate`
@@ -32,11 +32,6 @@ on:
         type: string
         required: false
         default: /ms-playwright
-      node-version:
-        description: Node.js version (the Playwright image ships Node already; this only affects local fallbacks).
-        type: number
-        required: false
-        default: 22
       pnpm-version:
         description: pnpm version to activate via corepack.
         type: string
@@ -58,13 +53,10 @@ on:
         description: |
           Newline-separated paths to upload on failure (Playwright HTML report
           plus the per-test-results dir). Use the same multiline format
-          `actions/upload-artifact` accepts.
+          `actions/upload-artifact` accepts. Paths are project-specific; the
+          caller must supply them.
         type: string
-        required: false
-        default: |
-          packages/visual-tests/playwright-report
-          packages/visual-tests/test-results
-          !packages/visual-tests/playwright/.cache
+        required: true
       screenshots-path:
         description: |
           Path (relative to repo root) where committed baseline PNGs live.
