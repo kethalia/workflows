@@ -144,6 +144,31 @@ jobs:
           echo "::error::update-baselines=true requires update-command to be set."
           exit 1
 
+      - name: Guard refresh-mode ref is a branch
+        if: inputs.update-baselines
+        env:
+          REF: ${{ github.ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          # In refresh mode we push a commit back; that requires a real branch
+          # ref. workflow_dispatch against a tag (or any non-branch ref with no
+          # head_ref) produces a detached HEAD that `git push` cannot resolve.
+          if [ -n "${HEAD_REF}" ]; then
+            echo "refresh target: ${HEAD_REF} (PR head)"
+            exit 0
+          fi
+          case "${REF}" in
+            refs/heads/*)
+              echo "refresh target: ${REF}"
+              ;;
+            *)
+              echo "::error::update-baselines requires a branch ref. Got '${REF}'."
+              echo "Trigger this workflow from a branch (workflow_dispatch on a branch, or pull_request)."
+              exit 1
+              ;;
+          esac
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -193,7 +218,9 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config user.name  "${GIT_USER_NAME}"
           git config user.email "${GIT_USER_EMAIL}"
-          git add -- "${SCREENSHOTS_PATH}"
+          # -A so deleted/renamed baselines are staged too — otherwise stale
+          # PNGs would accumulate after a component is removed or renamed.
+          git add -A -- "${SCREENSHOTS_PATH}"
           if git diff --cached --quiet; then
             echo "No baseline changes — branch already in sync with CI renders."
             exit 0

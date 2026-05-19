@@ -476,4 +476,4 @@ Local renders drift from CI renders because of font/antialiasing differences acr
 3. The PR's "Files changed" tab now shows the baseline PNGs side-by-side. Review the visual diff like any other code change.
 4. The next PR-triggered run compares CI-captured baselines against CI-captured screenshots — zero-tolerance pixel matching works.
 
-The caller workflow must grant `permissions: contents: write` (or use `secrets: inherit` with a default-write token) for the push step to succeed.
+The caller workflow must grant `permissions: contents: write` for the push step to succeed.
