@@ -27,6 +27,7 @@ See also: [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md) for t
   - [Smoke — retag-image](#smoke--retag-image) — `internal-retag-smoke.yml`
   - [Retag — Docker stack (promote on release)](#retag--docker-stack-promote-on-release) — `retag-stack.yml`
   - [Reusable — Verify GHCR tags](#reusable--verify-ghcr-tags) — `verify-ghcr-tags.yml`
+  - [Reusable — Visual Regression Tests](#reusable--visual-regression-tests) — `visual-tests.yml`
 
 ## Consumer-side alias pattern
 
@@ -414,4 +415,42 @@ jobs:
     with:
       org: chillwhales
       packages: '["chillpass", "chillpass-auth"]'
+```
+
+### Reusable — Visual Regression Tests
+
+File: [`visual-tests.yml`](.github/workflows/visual-tests.yml). Runs a Playwright visual regression suite inside the official `mcr.microsoft.com/playwright` container, with a peer `label-gate` job that fails closed when committed baseline screenshots change without an approval label on the PR. Designed for monorepos where the visual suite lives in a package and writes its baselines to a known path.
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `playwright-image` | string | false | `mcr.microsoft.com/playwright` | Container image to run the suite in. |
+| `playwright-image-tag` | string | true | — | Image tag matching the `@playwright/test` version (e.g. `v1.56.0-jammy`). Keep in lockstep with the SDK. |
+| `browsers-path` | string | false | `/ms-playwright` | `PLAYWRIGHT_BROWSERS_PATH` for the image. Override only for custom images. |
+| `pnpm-version` | string | false | `9.15.9` | pnpm version activated via corepack. |
+| `install-command` | string | false | `pnpm install --frozen-lockfile` | Dependency install command. |
+| `test-command` | string | true | — | Visual regression command. Must emit a Playwright HTML report at the path under `report-paths` so the failure-artifact upload has content to capture. |
+| `report-paths` | string | true | — | Newline-separated `actions/upload-artifact` paths (HTML report + per-test results dir). Project-specific; the caller must supply them. |
+| `screenshots-path` | string | false | `packages/visual-tests/src/__screenshots__/` | Path to the committed baseline tree, diffed by `label-gate`. |
+| `approval-label` | string | false | `baselines:approved` | Label required on the PR for baseline diffs to land. |
+| `timeout-minutes` | number | false | `30` | Per-job timeout for the visual-tests run. |
+| `artifact-retention-days` | number | false | `14` | Retention for the failure-artifact upload. |
+
+```yaml
+name: Visual Tests
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+  workflow_dispatch: {}
+
+jobs:
+  visual:
+    uses: kethalia/workflows/.github/workflows/visual-tests.yml@<version>
+    with:
+      playwright-image-tag: v1.56.0-jammy
+      test-command: pnpm turbo run test:visual --filter=@top-decor/visual-tests -- --reporter=line,html
+      report-paths: |
+        packages/visual-tests/playwright-report
+        packages/visual-tests/test-results
+        !packages/visual-tests/playwright/.cache
 ```
