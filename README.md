@@ -476,4 +476,4 @@ Local renders drift from CI renders because of font/antialiasing differences acr
 3. The PR's "Files changed" tab now shows the baseline PNGs side-by-side. Review the visual diff like any other code change.
 4. The next PR-triggered run compares CI-captured baselines against CI-captured screenshots — zero-tolerance pixel matching works.
 
-The reusable declares `contents: write` at the job level because GitHub Actions does not evaluate the `inputs` context inside `jobs.<id>.permissions`. Callers that never refresh baselines should cap the effective token with their own `permissions: contents: read` block; callers that may refresh must grant `contents: write`.
+The reusable does not declare a `permissions:` block — GitHub Actions does not evaluate the `inputs` context inside `jobs.<id>.permissions`, and a static `contents: write` on the reusable would exceed the token scope of test-only callers and trigger a startup failure. Callers always supply permissions themselves: test-only callers grant `contents: read` on the calling job (or workflow); callers that may set `update-baselines: true` grant `contents: write`.

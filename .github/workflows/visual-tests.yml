@@ -131,8 +131,8 @@ jobs:
     # `contents: write` on a reusable would exceed the token scope of
     # test-only callers that grant only `contents: read`, producing a
     # startup_failure. Callers that need `update-baselines: true` must
-    # grant `contents: write` at their own job-level `permissions:` —
-    # the reusable then inherits that elevated scope.
+    # grant `contents: write` on the calling job (or workflow)
+    # `permissions:` — the reusable then inherits that elevated scope.
     container:
       image: ${{ inputs.playwright-image }}:${{ inputs.playwright-image-tag }}
       options: --ipc=host

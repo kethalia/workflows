@@ -12,5 +12,5 @@ that.
 
 Remove the `permissions:` block from the `visual-tests` job entirely.
 Callers that need `update-baselines: true` must grant
-`permissions: contents: write` at their own job level; test-only callers
-keep the repo default (`read`) and run cleanly.
+`permissions: contents: write` on the calling job (or workflow); test-only
+callers keep the repo default (`read`) and run cleanly.
