@@ -79,25 +79,77 @@ on:
         type: number
         required: false
         default: 14
+      update-baselines:
+        description: |
+          When true, run `update-command` instead of `test-command`, then
+          commit any regenerated files under `screenshots-path` back to the
+          source branch. The `label-gate` job is skipped in this mode since
+          the entire point of the run is to produce baseline changes.
+
+          Intended to be wired to a `workflow_dispatch` trigger in the caller
+          so a maintainer can refresh baselines from the same container CI
+          uses for verification — eliminating local/CI environment drift.
+        type: boolean
+        required: false
+        default: false
+      update-command:
+        description: |
+          Command that regenerates baseline screenshots (e.g. one that adds
+          `--update-snapshots` to the Playwright run). Required when
+          `update-baselines` is true; ignored otherwise.
+        type: string
+        required: false
+        default: ''
+      update-commit-message:
+        description: Commit message used when `update-baselines` produces changes.
+        type: string
+        required: false
+        default: "chore(visual-tests): refresh baselines from CI"
+      git-user-name:
+        description: Git committer name used for the baseline-update commit.
+        type: string
+        required: false
+        default: github-actions[bot]
+      git-user-email:
+        description: Git committer email used for the baseline-update commit.
+        type: string
+        required: false
+        default: 41898282+github-actions[bot]@users.noreply.github.com
 
 concurrency:
   group: visual-tests-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Do not cancel in-flight runs when updating baselines — the run pushes a
+  # new commit that would otherwise interrupt itself.
+  cancel-in-progress: ${{ !inputs.update-baselines }}
 
 jobs:
   visual-tests:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
-      contents: read
+      # `write` is required only for `update-baselines: true` to push the
+      # regenerated screenshots back to the source branch. In normal test
+      # mode the job never writes; the caller may further restrict via its
+      # own `permissions:` block.
+      contents: ${{ inputs.update-baselines && 'write' || 'read' }}
     container:
       image: ${{ inputs.playwright-image }}:${{ inputs.playwright-image-tag }}
       options: --ipc=host
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ inputs.browsers-path }}
     steps:
+      - name: Validate inputs
+        if: inputs.update-baselines && inputs.update-command == ''
+        run: |
+          echo "::error::update-baselines=true requires update-command to be set."
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Check out the actual branch tip (not the detached merge SHA) so
+          # the baseline-refresh commit can be pushed back.
+          ref: ${{ inputs.update-baselines && (github.head_ref || github.ref_name) || github.ref }}
 
       - name: Enable corepack and activate pnpm
         run: |
@@ -120,7 +172,34 @@ jobs:
         run: ${{ inputs.install-command }}
 
       - name: Run visual tests
+        if: ${{ !inputs.update-baselines }}
         run: ${{ inputs.test-command }}
+
+      - name: Refresh visual baselines
+        if: inputs.update-baselines
+        run: ${{ inputs.update-command }}
+
+      - name: Commit refreshed baselines
+        if: inputs.update-baselines
+        env:
+          SCREENSHOTS_PATH: ${{ inputs.screenshots-path }}
+          COMMIT_MESSAGE: ${{ inputs.update-commit-message }}
+          GIT_USER_NAME: ${{ inputs.git-user-name }}
+          GIT_USER_EMAIL: ${{ inputs.git-user-email }}
+        run: |
+          set -euo pipefail
+          # `actions/checkout` marks the workspace as unsafe for `git` when
+          # run inside a container with a different uid than the repo owner.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name  "${GIT_USER_NAME}"
+          git config user.email "${GIT_USER_EMAIL}"
+          git add -- "${SCREENSHOTS_PATH}"
+          if git diff --cached --quiet; then
+            echo "No baseline changes — branch already in sync with CI renders."
+            exit 0
+          fi
+          git commit -m "${COMMIT_MESSAGE}"
+          git push
 
       - name: Upload Playwright artifacts on failure
         if: failure()
@@ -134,7 +213,7 @@ jobs:
 
   label-gate:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && !inputs.update-baselines
     timeout-minutes: 5
     permissions:
       contents: read

@@ -434,6 +434,11 @@ File: [`visual-tests.yml`](.github/workflows/visual-tests.yml). Runs a Playwrigh
 | `approval-label` | string | false | `baselines:approved` | Label required on the PR for baseline diffs to land. |
 | `timeout-minutes` | number | false | `30` | Per-job timeout for the visual-tests run. |
 | `artifact-retention-days` | number | false | `14` | Retention for the failure-artifact upload. |
+| `update-baselines` | boolean | false | `false` | When true, run `update-command` instead of `test-command` and commit any regenerated files under `screenshots-path` back to the source branch. The `label-gate` job is skipped in this mode. Wire to `workflow_dispatch` so maintainers can refresh baselines from the same container CI uses for verification. |
+| `update-command` | string | false | `''` | Command that regenerates baseline screenshots (typically the test command with `--update-snapshots`). Required when `update-baselines` is true. |
+| `update-commit-message` | string | false | `chore(visual-tests): refresh baselines from CI` | Commit message used when `update-baselines` produces changes. |
+| `git-user-name` | string | false | `github-actions[bot]` | Committer name for the baseline-refresh commit. |
+| `git-user-email` | string | false | `41898282+github-actions[bot]@users.noreply.github.com` | Committer email for the baseline-refresh commit. |
 
 ```yaml
 name: Visual Tests
@@ -441,7 +446,12 @@ on:
   push:
     branches: [main]
   pull_request: {}
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      update-baselines:
+        description: Refresh baseline screenshots from CI and commit back to this branch.
+        type: boolean
+        default: false
 
 jobs:
   visual:
@@ -449,8 +459,21 @@ jobs:
     with:
       playwright-image-tag: v1.56.0-jammy
       test-command: pnpm turbo run test:visual --filter=@top-decor/visual-tests -- --reporter=line,html
+      update-command: pnpm turbo run test:visual:update --filter=@top-decor/visual-tests -- --reporter=line
+      update-baselines: ${{ github.event_name == 'workflow_dispatch' && inputs.update-baselines || false }}
       report-paths: |
         packages/visual-tests/playwright-report
         packages/visual-tests/test-results
         !packages/visual-tests/playwright/.cache
 ```
+
+#### Refreshing baselines
+
+Local renders drift from CI renders because of font/antialiasing differences across environments. To avoid committing baselines that won't match CI, maintainers regenerate them from CI:
+
+1. Go to **Actions → Visual Tests → Run workflow**, pick the PR branch, tick **update-baselines**.
+2. The workflow runs `update-command`, then pushes a `chore(visual-tests): refresh baselines from CI` commit to that branch using the default `GITHUB_TOKEN`.
+3. The PR's "Files changed" tab now shows the baseline PNGs side-by-side. Review the visual diff like any other code change.
+4. The next PR-triggered run compares CI-captured baselines against CI-captured screenshots — zero-tolerance pixel matching works.
+
+The caller workflow must grant `permissions: contents: write` (or use `secrets: inherit` with a default-write token) for the push step to succeed.
