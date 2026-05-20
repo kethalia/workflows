@@ -136,6 +136,12 @@ jobs:
     container:
       image: ${{ inputs.playwright-image }}:${{ inputs.playwright-image-tag }}
       options: --ipc=host
+    # The default container shell is `sh` (dash), which rejects `set -o
+    # pipefail`. Pin every inline step to bash so the strict-mode prologue
+    # works uniformly. The playwright-jammy image ships bash.
+    defaults:
+      run:
+        shell: bash
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ inputs.browsers-path }}
     steps:
