@@ -111,8 +111,8 @@ on:
         default: "chore(visual-tests): refresh baselines from CI"
       git-user-name:
         description: |
-          DEPRECATED. Baseline-refresh commits are now created via the GitHub
-          Git Data API and authored as `github-actions[bot]` so they are
+          DEPRECATED. Baseline-refresh commits are now created via the
+          GitHub API and authored as `github-actions[bot]` so they are
           signed by GitHub's web-flow key. This input is accepted for caller
           backwards-compatibility and ignored.
         type: string
@@ -221,12 +221,13 @@ jobs:
         if: inputs.update-baselines
         run: ${{ inputs.update-command }}
 
-      # Use the GitHub Git Data API rather than `git commit` + `git push` so
-      # the resulting commit is signed by GitHub's web-flow key and appears
-      # as a verified `github-actions[bot]` commit. Local `git commit` from
-      # the runner produces unsigned commits that fail branch protection
-      # rules requiring signed commits.
-      - name: Commit refreshed baselines (signed via Git Data API)
+      # Use GitHub's GraphQL `createCommitOnBranch` mutation rather than
+      # `git commit` + `git push` so the resulting commit is signed by
+      # GitHub's web-flow key and appears as a verified
+      # `github-actions[bot]` commit. Local `git commit` from the runner
+      # produces unsigned commits that fail branch protection rules
+      # requiring signed commits.
+      - name: Commit refreshed baselines (signed via GitHub API)
         if: inputs.update-baselines
         uses: actions/github-script@v7
         env:
@@ -258,8 +259,13 @@ jobs:
             execSync(`git add -A -- "${screenshotsPath}"`, { stdio: 'inherit' });
 
             // --name-status -z output: each entry is "<status>\0<path>\0",
-            // except R/C which is "<status>\0<from>\0<to>\0".
-            const buf = execSync('git diff --cached --name-status -z');
+            // except R/C which is "<status>\0<from>\0<to>\0". Raise maxBuffer
+            // well above the 1 MiB default — large baseline refreshes can
+            // produce tens of KB of path data, and we'd rather not silently
+            // truncate before committing.
+            const buf = execSync('git diff --cached --name-status -z', {
+              maxBuffer: 256 * 1024 * 1024,
+            });
             if (buf.length === 0) {
               core.info('No baseline changes — branch already in sync with CI renders.');
               return;
@@ -301,56 +307,52 @@ jobs:
             const { data: refData } = await github.rest.git.getRef({
               owner, repo, ref: `heads/${targetRef}`,
             });
-            const parentSha = refData.object.sha;
-            const { data: parentCommit } = await github.rest.git.getCommit({
-              owner, repo, commit_sha: parentSha,
-            });
+            const expectedHeadOid = refData.object.sha;
 
-            // Build a tree patch relative to the parent's tree. Setting `sha`
-            // to null on a `blob` entry deletes the path from the tree.
-            const tree = [];
+            // GraphQL `createCommitOnBranch` accepts all additions+deletions in
+            // a single mutation and produces a web-flow-signed commit attributed
+            // to `github-actions[bot]` when called with GITHUB_TOKEN. This
+            // replaces the per-file createBlob loop + createTree + createCommit
+            // + updateRef dance with one network round-trip, avoiding secondary
+            // rate limits on baseline refreshes that touch many PNGs.
+            const additions = [];
+            const deletions = [];
             for (const entry of entries) {
               if (entry.op === 'delete') {
-                tree.push({ path: entry.path, mode: '100644', type: 'blob', sha: null });
+                deletions.push({ path: entry.path });
                 continue;
               }
               const abs = path.join(process.env.GITHUB_WORKSPACE, entry.path);
-              const stat = fs.statSync(abs);
-              const mode = (stat.mode & 0o111) ? '100755' : '100644';
               const contents = fs.readFileSync(abs);
-              const { data: blob } = await github.rest.git.createBlob({
-                owner, repo,
-                content: contents.toString('base64'),
-                encoding: 'base64',
+              additions.push({
+                path: entry.path,
+                contents: contents.toString('base64'),
               });
-              tree.push({ path: entry.path, mode, type: 'blob', sha: blob.sha });
             }
 
-            const { data: newTree } = await github.rest.git.createTree({
-              owner, repo,
-              base_tree: parentCommit.tree.sha,
-              tree,
+            const mutation = `
+              mutation($input: CreateCommitOnBranchInput!) {
+                createCommitOnBranch(input: $input) {
+                  commit { oid url }
+                }
+              }
+            `;
+            const result = await github.graphql(mutation, {
+              input: {
+                branch: {
+                  repositoryNameWithOwner: `${owner}/${repo}`,
+                  branchName: targetRef,
+                },
+                expectedHeadOid,
+                message: { headline: commitMessage },
+                fileChanges: { additions, deletions },
+              },
             });
 
-            // Commits created via the API with the workflow's GITHUB_TOKEN are
-            // signed by GitHub's web-flow key and attributed to
-            // `github-actions[bot]`. No GPG key management required.
-            const { data: newCommit } = await github.rest.git.createCommit({
-              owner, repo,
-              message: commitMessage,
-              tree: newTree.sha,
-              parents: [parentSha],
-            });
-
-            await github.rest.git.updateRef({
-              owner, repo,
-              ref: `heads/${targetRef}`,
-              sha: newCommit.sha,
-            });
-
+            const newOid = result.createCommitOnBranch.commit.oid;
             core.info(
-              `Pushed signed commit ${newCommit.sha} to ${targetRef} ` +
-              `(${entries.length} tree entries).`,
+              `Pushed signed commit ${newOid} to ${targetRef} ` +
+              `(${additions.length} added, ${deletions.length} deleted).`,
             );
 
       - name: Upload Playwright artifacts on failure
