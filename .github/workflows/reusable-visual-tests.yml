@@ -110,12 +110,18 @@ on:
         required: false
         default: "chore(visual-tests): refresh baselines from CI"
       git-user-name:
-        description: Git committer name used for the baseline-update commit.
+        description: |
+          DEPRECATED. Baseline-refresh commits are now created via the GitHub
+          Git Data API and authored as `github-actions[bot]` so they are
+          signed by GitHub's web-flow key. This input is accepted for caller
+          backwards-compatibility and ignored.
         type: string
         required: false
         default: github-actions[bot]
       git-user-email:
-        description: Git committer email used for the baseline-update commit.
+        description: |
+          DEPRECATED. See `git-user-name` — author is fixed to
+          `github-actions[bot]` for web-flow signing. Ignored.
         type: string
         required: false
         default: 41898282+github-actions[bot]@users.noreply.github.com
@@ -215,29 +221,137 @@ jobs:
         if: inputs.update-baselines
         run: ${{ inputs.update-command }}
 
-      - name: Commit refreshed baselines
+      # Use the GitHub Git Data API rather than `git commit` + `git push` so
+      # the resulting commit is signed by GitHub's web-flow key and appears
+      # as a verified `github-actions[bot]` commit. Local `git commit` from
+      # the runner produces unsigned commits that fail branch protection
+      # rules requiring signed commits.
+      - name: Commit refreshed baselines (signed via Git Data API)
         if: inputs.update-baselines
+        uses: actions/github-script@v7
         env:
           SCREENSHOTS_PATH: ${{ inputs.screenshots-path }}
           COMMIT_MESSAGE: ${{ inputs.update-commit-message }}
-          GIT_USER_NAME: ${{ inputs.git-user-name }}
-          GIT_USER_EMAIL: ${{ inputs.git-user-email }}
-        run: |
-          set -euo pipefail
-          # `actions/checkout` marks the workspace as unsafe for `git` when
-          # run inside a container with a different uid than the repo owner.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git config user.name  "${GIT_USER_NAME}"
-          git config user.email "${GIT_USER_EMAIL}"
-          # -A so deleted/renamed baselines are staged too — otherwise stale
-          # PNGs would accumulate after a component is removed or renamed.
-          git add -A -- "${SCREENSHOTS_PATH}"
-          if git diff --cached --quiet; then
-            echo "No baseline changes — branch already in sync with CI renders."
-            exit 0
-          fi
-          git commit -m "${COMMIT_MESSAGE}"
-          git push
+          # `github.head_ref` is set on pull_request events; otherwise
+          # `github.ref_name` carries the branch from workflow_dispatch.
+          # Mirrors the `actions/checkout` ref selection above.
+          TARGET_REF: ${{ github.head_ref || github.ref_name }}
+        with:
+          script: |
+            const { execSync } = require('node:child_process');
+            const fs = require('node:fs');
+            const path = require('node:path');
+
+            const screenshotsPath = process.env.SCREENSHOTS_PATH;
+            const commitMessage = process.env.COMMIT_MESSAGE;
+            const targetRef = process.env.TARGET_REF;
+            const { owner, repo } = context.repo;
+
+            // `actions/checkout` marks the workspace as unsafe for `git` when
+            // run inside a container with a different uid than the repo owner.
+            execSync(
+              `git config --global --add safe.directory "${process.env.GITHUB_WORKSPACE}"`,
+              { stdio: 'inherit' },
+            );
+            // -A so deleted/renamed baselines are staged too — otherwise stale
+            // PNGs would accumulate after a component is removed or renamed.
+            execSync(`git add -A -- "${screenshotsPath}"`, { stdio: 'inherit' });
+
+            // --name-status -z output: each entry is "<status>\0<path>\0",
+            // except R/C which is "<status>\0<from>\0<to>\0".
+            const buf = execSync('git diff --cached --name-status -z');
+            if (buf.length === 0) {
+              core.info('No baseline changes — branch already in sync with CI renders.');
+              return;
+            }
+            const tokens = [];
+            let start = 0;
+            for (let i = 0; i < buf.length; i++) {
+              if (buf[i] === 0) {
+                tokens.push(buf.subarray(start, i).toString('utf8'));
+                start = i + 1;
+              }
+            }
+
+            const entries = [];
+            for (let i = 0; i < tokens.length; ) {
+              const status = tokens[i++];
+              const code = status[0];
+              if (code === 'R' || code === 'C') {
+                const from = tokens[i++];
+                const to = tokens[i++];
+                // Model rename/copy as delete-old + add-new at the API level.
+                if (code === 'R') {
+                  entries.push({ op: 'delete', path: from });
+                }
+                entries.push({ op: 'upsert', path: to });
+              } else if (code === 'D') {
+                entries.push({ op: 'delete', path: tokens[i++] });
+              } else {
+                // A, M, T (type-change) — treat as upsert.
+                entries.push({ op: 'upsert', path: tokens[i++] });
+              }
+            }
+
+            if (entries.length === 0) {
+              core.info('No baseline changes — branch already in sync with CI renders.');
+              return;
+            }
+
+            const { data: refData } = await github.rest.git.getRef({
+              owner, repo, ref: `heads/${targetRef}`,
+            });
+            const parentSha = refData.object.sha;
+            const { data: parentCommit } = await github.rest.git.getCommit({
+              owner, repo, commit_sha: parentSha,
+            });
+
+            // Build a tree patch relative to the parent's tree. Setting `sha`
+            // to null on a `blob` entry deletes the path from the tree.
+            const tree = [];
+            for (const entry of entries) {
+              if (entry.op === 'delete') {
+                tree.push({ path: entry.path, mode: '100644', type: 'blob', sha: null });
+                continue;
+              }
+              const abs = path.join(process.env.GITHUB_WORKSPACE, entry.path);
+              const stat = fs.statSync(abs);
+              const mode = (stat.mode & 0o111) ? '100755' : '100644';
+              const contents = fs.readFileSync(abs);
+              const { data: blob } = await github.rest.git.createBlob({
+                owner, repo,
+                content: contents.toString('base64'),
+                encoding: 'base64',
+              });
+              tree.push({ path: entry.path, mode, type: 'blob', sha: blob.sha });
+            }
+
+            const { data: newTree } = await github.rest.git.createTree({
+              owner, repo,
+              base_tree: parentCommit.tree.sha,
+              tree,
+            });
+
+            // Commits created via the API with the workflow's GITHUB_TOKEN are
+            // signed by GitHub's web-flow key and attributed to
+            // `github-actions[bot]`. No GPG key management required.
+            const { data: newCommit } = await github.rest.git.createCommit({
+              owner, repo,
+              message: commitMessage,
+              tree: newTree.sha,
+              parents: [parentSha],
+            });
+
+            await github.rest.git.updateRef({
+              owner, repo,
+              ref: `heads/${targetRef}`,
+              sha: newCommit.sha,
+            });
+
+            core.info(
+              `Pushed signed commit ${newCommit.sha} to ${targetRef} ` +
+              `(${entries.length} tree entries).`,
+            );
 
       - name: Upload Playwright artifacts on failure
         if: failure()
