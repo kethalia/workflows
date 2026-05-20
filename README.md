@@ -506,8 +506,15 @@ jobs:
   dispatch:
     if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '/update-snapshots') }}
     uses: kethalia/workflows/.github/workflows/update-snapshots.yml@<version>
+    permissions:
+      issues: write          # react to comment + post follow-up comment
+      pull-requests: read    # resolve PR head branch
+      actions: write         # dispatch the target workflow
+      contents: read
 ```
 
-The caller's `if:` filter must match the `trigger-phrase` input (or omit the input to accept the default).
+The caller's `if:` filter must match the `trigger-phrase` input (or omit the input to accept the default) — the reusable re-checks the prefix and fails loudly if they diverge.
+
+The `permissions:` block on the calling job is mandatory: reusable workflows cannot elevate beyond the caller's `GITHUB_TOKEN`, and on repos with the default read-only token the dispatch step will silently fail without these scopes.
 
 Trust boundary: `issue_comment` always loads workflow files from the default branch, never the PR HEAD copy. The `Check commenter permission` step in the reusable is the only auth gate — keep it intact. Fork PRs are refused by design: `workflow_dispatch` cannot target a branch that lives outside the target repo, so the reusable exits with an actionable error rather than silently no-opping.

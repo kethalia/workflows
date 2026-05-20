@@ -20,6 +20,19 @@ name: Reusable — Update Visual Snapshots (Dispatcher)
 #
 # Trust boundary: `issue_comment` always loads workflows from the default
 # branch, never the PR HEAD. The permission check is the auth gate.
+#
+# Required caller permissions (reusables cannot elevate beyond the caller's
+# token, so the calling workflow must grant at least these scopes either at
+# `permissions:` workflow-level or on the calling job):
+#
+#   permissions:
+#     issues: write          # react to comment + post follow-up comment
+#     pull-requests: read    # gh pr view (resolve PR head branch)
+#     actions: write         # gh workflow run (dispatch the target workflow)
+#     contents: read         # checkout-free, but actions/github-script needs it
+#
+# Without these, the dispatch step silently fails on repos that default the
+# `GITHUB_TOKEN` to read-only.
 
 on:
   workflow_call:
@@ -42,9 +55,9 @@ on:
         default: update-baselines
       trigger-phrase:
         description: |
-          Comment prefix that authorizes a dispatch. The caller is expected
-          to gate its `if:` on this same prefix; the reusable does not
-          re-check it (the caller already filtered).
+          Comment prefix that authorizes a dispatch. The reusable re-checks
+          this prefix as a defense-in-depth guard so the caller's `if:`
+          filter and the reusable's behavior stay in sync.
         type: string
         required: false
         default: /update-snapshots
@@ -73,6 +86,22 @@ jobs:
       actions: write         # gh workflow run
       contents: read
     steps:
+      - name: Guard on trigger phrase
+        env:
+          TRIGGER_PHRASE: ${{ inputs.trigger-phrase }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          case "$COMMENT_BODY" in
+            "$TRIGGER_PHRASE"*)
+              echo "Comment matches trigger phrase '$TRIGGER_PHRASE'."
+              ;;
+            *)
+              echo "::error::Comment does not start with configured trigger-phrase '$TRIGGER_PHRASE'. Caller's \`if:\` filter must match the \`trigger-phrase\` input."
+              exit 1
+              ;;
+          esac
+
       - name: Check commenter permission
         uses: actions/github-script@v7
         env:
