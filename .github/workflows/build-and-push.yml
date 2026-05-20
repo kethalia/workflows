@@ -67,7 +67,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.5.1
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.5.2
 
   build-and-push:
     name: Build ${{ inputs.image }}
