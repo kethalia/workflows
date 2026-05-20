@@ -13,7 +13,11 @@ on:
   workflow_call:
     inputs:
       playwright-image:
-        description: Container image to run the suite in (Playwright official image recommended). Must include bash — the reusable pins `defaults.run.shell: bash` so strict-mode prologues (`set -o pipefail`) work uniformly across steps.
+        description: |
+          Container image to run the suite in (Playwright official image
+          recommended). Must include bash — the reusable pins
+          `defaults.run.shell: bash` so strict-mode prologues
+          (`set -o pipefail`) work uniformly across steps.
         type: string
         required: false
         default: mcr.microsoft.com/playwright
