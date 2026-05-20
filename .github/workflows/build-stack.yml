@@ -7,7 +7,14 @@
 #
 # Tag policy (applied to every service):
 #   - always: ghcr.io/<owner>/<image>:sha-<short>
-#   - on pull_request from same-repo: + ghcr.io/<owner>/<image>:pr-<num>-<sha>
+#   - on pull_request from same-repo:
+#       + ghcr.io/<owner>/<image>:pr-<num>-<github.sha>            (merge ref, 40 chars)
+#       + ghcr.io/<owner>/<image>:pr-<num>-<head_short_sha_8>      (PR head, 8 chars)
+#     The 8-char head-sha tag is what ArgoCD's PullRequest generator exposes as
+#     `{{head_short_sha}}`; ApplicationSets use that form to resolve per-PR
+#     images. The 40-char merge-ref tag is retained for backwards compatibility
+#     with anything still consuming the old name. Both tags are pruned together
+#     by GHCR retention since they share the `pr-` prefix.
 #
 # Caller requirements:
 #   permissions:
@@ -63,11 +70,21 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       sha_short: ${{ steps.meta.outputs.sha_short }}
+      head_short: ${{ steps.meta.outputs.head_short }}
       owner_lc: ${{ steps.meta.outputs.owner_lc }}
     steps:
       - id: meta
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          # 8-char short of the PR head SHA, matching ArgoCD PullRequest
+          # generator's `head_short_sha`. Empty on non-PR events.
+          if [ -n "${PR_HEAD_SHA}" ]; then
+            echo "head_short=${PR_HEAD_SHA:0:8}" >> "$GITHUB_OUTPUT"
+          else
+            echo "head_short=" >> "$GITHUB_OUTPUT"
+          fi
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           echo "owner_lc=${owner}" >> "$GITHUB_OUTPUT"
       - id: matrix
@@ -109,3 +126,4 @@ jobs:
       tags: |
         ghcr.io/${{ needs.prep.outputs.owner_lc }}/${{ matrix.image }}:sha-${{ needs.prep.outputs.sha_short }}
         ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && format('ghcr.io/{0}/{1}:pr-{2}-{3}', needs.prep.outputs.owner_lc, matrix.image, github.event.pull_request.number, github.sha) || '' }}
+        ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && format('ghcr.io/{0}/{1}:pr-{2}-{3}', needs.prep.outputs.owner_lc, matrix.image, github.event.pull_request.number, needs.prep.outputs.head_short) || '' }}
