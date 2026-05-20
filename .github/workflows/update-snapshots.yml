@@ -21,17 +21,25 @@ name: Reusable — Update Visual Snapshots (Dispatcher)
 # Trust boundary: `issue_comment` always loads workflows from the default
 # branch, never the PR HEAD. The permission check is the auth gate.
 #
-# Required caller permissions (reusables cannot elevate beyond the caller's
-# token, so the calling workflow must grant at least these scopes either at
-# `permissions:` workflow-level or on the calling job):
+# Required caller permissions (this reusable does NOT declare a job-level
+# `permissions:` block — a reusable's job permissions cap what the caller can
+# grant, never elevate it, so the calling job must declare these scopes
+# explicitly):
 #
 #   permissions:
-#     issues: write          # react to comment + post follow-up comment
-#     pull-requests: read    # gh pr view (resolve PR head branch)
+#     pull-requests: write   # PR-context comment reactions + dispatch follow-up
+#                            #   (issue_comment on PRs routes through the
+#                            #   pull-requests scope, despite the URL shape;
+#                            #   `issues: write` alone is not sufficient)
 #     actions: write         # gh workflow run (dispatch the target workflow)
-#     contents: read         # checkout-free, but actions/github-script needs it
+#     contents: read         # actions/github-script + gh CLI base scope
 #
-# Without these, the dispatch step silently fails on repos that default the
+# Note: `contents: write` is NOT required by THIS reusable — the dispatched
+# target workflow (e.g. visual-tests.yml) is what pushes refreshed baselines
+# back to the PR branch, and that workflow declares its own permissions.
+#
+# Without these grants on the calling job, the reaction / dispatch / comment
+# steps will 403 silently on repos where the org or repo default scopes the
 # `GITHUB_TOKEN` to read-only.
 
 on:
@@ -80,11 +88,8 @@ on:
 jobs:
   dispatch:
     runs-on: ubuntu-latest
-    permissions:
-      issues: write          # createComment + createForIssueComment (reactions)
-      pull-requests: read    # gh pr view
-      actions: write         # gh workflow run
-      contents: read
+    # NOTE: no job-level `permissions:` block by design — see header doc.
+    # The caller's calling job MUST grant: pull-requests: write, actions: write, contents: read.
     steps:
       - name: Guard on trigger phrase
         env:
