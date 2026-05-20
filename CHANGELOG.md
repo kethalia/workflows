@@ -1,5 +1,11 @@
 # @kethalia/workflows
 
+## 1.5.3
+
+### Patch Changes
+
+- 11c25fe: Fix YAML syntax error in `reusable-visual-tests.yml` `playwright-image` input description. The unquoted plain scalar contained `` `defaults.run.shell: bash` ``, whose embedded `: ` broke YAML parsing and triggered GitHub's "Invalid workflow file" phantom failure run on every push touching the file. Converted the description to a `|` block scalar to match neighboring inputs.
+
 ## 1.5.2
 
 ### Patch Changes

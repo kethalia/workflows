@@ -47,7 +47,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.5.2
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.5.3
 
   retag:
     name: Retag ${{ inputs.image }} (${{ inputs.source-tag }})
