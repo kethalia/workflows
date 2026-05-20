@@ -23,8 +23,8 @@ name: Reusable — Update Visual Snapshots (Dispatcher)
 #
 # Required caller permissions (this reusable does NOT declare a job-level
 # `permissions:` block — a reusable's job permissions cap what the caller can
-# grant, never elevate it, so the calling job must declare these scopes
-# explicitly):
+# grant, never elevate it, so the caller must grant these scopes at
+# workflow-level or on the calling job):
 #
 #   permissions:
 #     pull-requests: write   # PR-context comment reactions + dispatch follow-up
@@ -38,9 +38,9 @@ name: Reusable — Update Visual Snapshots (Dispatcher)
 # target workflow (e.g. visual-tests.yml) is what pushes refreshed baselines
 # back to the PR branch, and that workflow declares its own permissions.
 #
-# Without these grants on the calling job, the reaction / dispatch / comment
-# steps will 403 silently on repos where the org or repo default scopes the
-# `GITHUB_TOKEN` to read-only.
+# Without these grants (workflow- or job-level on the caller), the reaction /
+# dispatch / comment steps will 403 silently on repos where the org or repo
+# default scopes the `GITHUB_TOKEN` to read-only.
 
 on:
   workflow_call:
@@ -89,7 +89,7 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     # NOTE: no job-level `permissions:` block by design — see header doc.
-    # The caller's calling job MUST grant: pull-requests: write, actions: write, contents: read.
+    # The caller (workflow- or job-level) must grant: pull-requests: write, actions: write, contents: read.
     steps:
       - name: Guard on trigger phrase
         env:
