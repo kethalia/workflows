@@ -13,7 +13,7 @@ on:
   workflow_call:
     inputs:
       playwright-image:
-        description: Container image to run the suite in (Playwright official image recommended).
+        description: Container image to run the suite in (Playwright official image recommended). Must include bash — the reusable pins `defaults.run.shell: bash` so strict-mode prologues (`set -o pipefail`) work uniformly across steps.
         type: string
         required: false
         default: mcr.microsoft.com/playwright
@@ -136,9 +136,9 @@ jobs:
     container:
       image: ${{ inputs.playwright-image }}:${{ inputs.playwright-image-tag }}
       options: --ipc=host
-    # The default container shell is `sh` (dash), which rejects `set -o
-    # pipefail`. Pin every inline step to bash so the strict-mode prologue
-    # works uniformly. The playwright-jammy image ships bash.
+    # The default container shell is `sh` (dash), which rejects `set -o pipefail`.
+    # Pin every inline step to bash so the strict-mode prologue works uniformly.
+    # The playwright-jammy image ships bash.
     defaults:
       run:
         shell: bash
