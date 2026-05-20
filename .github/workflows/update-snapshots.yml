@@ -1,0 +1,153 @@
+name: Reusable — Update Visual Snapshots (Dispatcher)
+
+# Reusable dispatcher for the `/update-snapshots` PR-comment workflow.
+#
+# Industry-standard human-in-the-loop pattern (mirrors Chromatic / Percy /
+# Argos): when a visual-tests run fails on an intentional UI change, a
+# maintainer comments `/update-snapshots` on the PR. The caller workflow
+# (which owns the `issue_comment` trigger — `issue_comment` is not a valid
+# `workflow_call` event) delegates the actual dispatch logic to this
+# reusable workflow.
+#
+# This reusable:
+#   1. verifies the commenter has write access to the repo,
+#   2. reacts to the comment with 👀,
+#   3. resolves the PR head branch via the API and refuses fork PRs
+#      (workflow_dispatch can only target branches in the same repo),
+#   4. dispatches the target workflow (default: `visual-tests.yml`) on that
+#      branch, passing `update-baselines=true` as a workflow input,
+#   5. posts a follow-up comment linking to the dispatched run.
+#
+# Trust boundary: `issue_comment` always loads workflows from the default
+# branch, never the PR HEAD. The permission check is the auth gate.
+
+on:
+  workflow_call:
+    inputs:
+      target-workflow:
+        description: |
+          Workflow file (basename) to dispatch on the PR head branch. Must
+          declare a `workflow_dispatch` trigger and accept the input named
+          by `dispatch-input-name`.
+        type: string
+        required: false
+        default: visual-tests.yml
+      dispatch-input-name:
+        description: |
+          Name of the boolean `workflow_dispatch` input to set to `true`
+          on the dispatched run. Must match the input declared by the
+          target workflow.
+        type: string
+        required: false
+        default: update-baselines
+      trigger-phrase:
+        description: |
+          Comment prefix that authorizes a dispatch. The caller is expected
+          to gate its `if:` on this same prefix; the reusable does not
+          re-check it (the caller already filtered).
+        type: string
+        required: false
+        default: /update-snapshots
+      allowed-permissions:
+        description: |
+          Comma-separated repo permission levels allowed to trigger a
+          dispatch. Default covers maintainers/admins/write collaborators.
+        type: string
+        required: false
+        default: admin,write,maintain
+      confirmation-message:
+        description: |
+          Markdown body for the follow-up confirmation comment. Supports
+          two placeholders: `{ref}` (PR head branch) and `{runs_url}`
+          (URL of the target workflow's run list).
+        type: string
+        required: false
+        default: "🔄 Dispatched baseline refresh on `{ref}`. Watch the run at {runs_url}. New baselines will be committed back to this PR if any pixels changed."
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write          # createComment + createForIssueComment (reactions)
+      pull-requests: read    # gh pr view
+      actions: write         # gh workflow run
+      contents: read
+    steps:
+      - name: Check commenter permission
+        uses: actions/github-script@v7
+        env:
+          ALLOWED: ${{ inputs.allowed-permissions }}
+        with:
+          script: |
+            const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.payload.comment.user.login,
+            });
+            const allowed = process.env.ALLOWED.split(',').map(s => s.trim());
+            if (!allowed.includes(perm.permission)) {
+              core.setFailed(`@${context.payload.comment.user.login} lacks repo permission to refresh baselines (got: ${perm.permission}; allowed: ${allowed.join(', ')}).`);
+            }
+
+      - name: React to comment (eyes)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            });
+
+      - name: Resolve PR head ref
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          # Refuse fork PRs: workflow_dispatch requires a branch in this repo.
+          ref=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json headRefName,headRepositoryOwner \
+            --jq "if .headRepositoryOwner.login == \"$REPO_OWNER\" then .headRefName else empty end")
+          if [ -z "$ref" ]; then
+            echo "::error::PR head is on a fork; workflow_dispatch requires a branch in this repo."
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch target workflow on PR branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ steps.pr.outputs.ref }}
+          TARGET_WORKFLOW: ${{ inputs.target-workflow }}
+          INPUT_NAME: ${{ inputs.dispatch-input-name }}
+        run: |
+          set -euo pipefail
+          gh workflow run "$TARGET_WORKFLOW" \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$REF" \
+            -f "${INPUT_NAME}=true"
+
+      - name: Comment with dispatch confirmation
+        uses: actions/github-script@v7
+        env:
+          REF: ${{ steps.pr.outputs.ref }}
+          TARGET_WORKFLOW: ${{ inputs.target-workflow }}
+          TEMPLATE: ${{ inputs.confirmation-message }}
+        with:
+          script: |
+            const ref = process.env.REF;
+            const workflow = process.env.TARGET_WORKFLOW;
+            const runsUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/${workflow}`;
+            const body = process.env.TEMPLATE
+              .replace(/\{ref\}/g, ref)
+              .replace(/\{runs_url\}/g, runsUrl);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body,
+            });
