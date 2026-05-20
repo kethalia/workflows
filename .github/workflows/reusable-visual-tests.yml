@@ -311,10 +311,11 @@ jobs:
 
             // GraphQL `createCommitOnBranch` accepts all additions+deletions in
             // a single mutation and produces a web-flow-signed commit attributed
-            // to `github-actions[bot]` when called with GITHUB_TOKEN. This
-            // replaces the per-file createBlob loop + createTree + createCommit
-            // + updateRef dance with one network round-trip, avoiding secondary
-            // rate limits on baseline refreshes that touch many PNGs.
+            // to `github-actions[bot]` when called with GITHUB_TOKEN. Replaces
+            // the prior runner-side `git commit` + `git push`, which produced
+            // an unsigned commit that branch-protection rejected as unverified.
+            // One round-trip regardless of file count avoids secondary rate
+            // limits on baseline refreshes that touch many PNGs.
             const additions = [];
             const deletions = [];
             for (const entry of entries) {
