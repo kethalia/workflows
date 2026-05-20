@@ -52,7 +52,7 @@ on:
           by `dispatch-input-name`.
         type: string
         required: false
-        default: reusable-visual-tests.yml
+        default: visual-tests.yml
       dispatch-input-name:
         description: |
           Name of the boolean `workflow_dispatch` input to set to `true`

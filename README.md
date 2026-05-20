@@ -487,7 +487,7 @@ The `issue_comment` trigger is not a valid `workflow_call` event, so the caller 
 
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `target-workflow` | string | false | `reusable-visual-tests.yml` | Basename of the workflow to dispatch. Must declare a `workflow_dispatch` trigger and accept the input named by `dispatch-input-name`. |
+| `target-workflow` | string | false | `visual-tests.yml` | Basename of the workflow to dispatch. Must declare a `workflow_dispatch` trigger and accept the input named by `dispatch-input-name`. |
 | `dispatch-input-name` | string | false | `update-baselines` | Name of the boolean `workflow_dispatch` input set to `true` on the dispatched run. |
 | `trigger-phrase` | string | false | `/update-snapshots` | Comment prefix that authorizes a dispatch. The caller gates on this prefix; the reusable also re-checks it as a defense-in-depth guard. |
 | `allowed-permissions` | string | false | `admin,write,maintain` | Comma-separated repo permission levels allowed to trigger a dispatch. |
