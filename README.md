@@ -27,7 +27,7 @@ See also: [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md) for t
   - [Smoke — retag-image](#smoke--retag-image) — `internal-retag-smoke.yml`
   - [Retag — Docker stack (promote on release)](#retag--docker-stack-promote-on-release) — `retag-stack.yml`
   - [Reusable — Verify GHCR tags](#reusable--verify-ghcr-tags) — `verify-ghcr-tags.yml`
-  - [Reusable — Visual Regression Tests](#reusable--visual-regression-tests) — `visual-tests.yml`
+  - [Reusable — Visual Regression Tests](#reusable--visual-regression-tests) — `reusable-visual-tests.yml`
   - [Reusable — Update Visual Snapshots (Dispatcher)](#reusable--update-visual-snapshots-dispatcher) — `update-snapshots.yml`
 
 ## Consumer-side alias pattern
@@ -420,7 +420,7 @@ jobs:
 
 ### Reusable — Visual Regression Tests
 
-File: [`visual-tests.yml`](.github/workflows/visual-tests.yml). Runs a Playwright visual regression suite inside the official `mcr.microsoft.com/playwright` container, with a peer `label-gate` job that fails closed when committed baseline screenshots change without an approval label on the PR. Designed for monorepos where the visual suite lives in a package and writes its baselines to a known path.
+File: [`reusable-visual-tests.yml`](.github/workflows/reusable-visual-tests.yml). Runs a Playwright visual regression suite inside the official `mcr.microsoft.com/playwright` container, with a peer `label-gate` job that fails closed when committed baseline screenshots change without an approval label on the PR. Designed for monorepos where the visual suite lives in a package and writes its baselines to a known path.
 
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -456,7 +456,7 @@ on:
 
 jobs:
   visual:
-    uses: kethalia/workflows/.github/workflows/visual-tests.yml@<version>
+    uses: kethalia/workflows/.github/workflows/reusable-visual-tests.yml@<version>
     with:
       playwright-image-tag: v1.56.0-jammy
       test-command: pnpm turbo run test:visual --filter=@top-decor/visual-tests -- --reporter=line,html

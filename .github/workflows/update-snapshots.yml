@@ -14,7 +14,7 @@ name: Reusable — Update Visual Snapshots (Dispatcher)
 #   2. reacts to the comment with 👀,
 #   3. resolves the PR head branch via the API and refuses fork PRs
 #      (workflow_dispatch can only target branches in the same repo),
-#   4. dispatches the target workflow (default: `visual-tests.yml`) on that
+#   4. dispatches the target workflow (default: `reusable-visual-tests.yml`) on that
 #      branch, passing `update-baselines=true` as a workflow input,
 #   5. posts a follow-up comment linking to the dispatched run.
 #
@@ -35,7 +35,7 @@ name: Reusable — Update Visual Snapshots (Dispatcher)
 #     contents: read         # actions/github-script + gh CLI base scope
 #
 # Note: `contents: write` is NOT required by THIS reusable — the dispatched
-# target workflow (e.g. visual-tests.yml) is what pushes refreshed baselines
+# target workflow (e.g. reusable-visual-tests.yml) is what pushes refreshed baselines
 # back to the PR branch, and that workflow declares its own permissions.
 #
 # Without these grants (workflow- or job-level on the caller), the reaction /
