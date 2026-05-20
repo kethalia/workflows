@@ -50,7 +50,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.5.3
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v1.5.4
 
   release:
     name: Release
@@ -64,7 +64,7 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v1.5.3
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v1.5.4
         with:
           node-version: ${{ inputs.node-version }}
           fetch-depth: 0
