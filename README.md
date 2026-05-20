@@ -28,6 +28,7 @@ See also: [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md) for t
   - [Retag — Docker stack (promote on release)](#retag--docker-stack-promote-on-release) — `retag-stack.yml`
   - [Reusable — Verify GHCR tags](#reusable--verify-ghcr-tags) — `verify-ghcr-tags.yml`
   - [Reusable — Visual Regression Tests](#reusable--visual-regression-tests) — `visual-tests.yml`
+  - [Reusable — Update Visual Snapshots (Dispatcher)](#reusable--update-visual-snapshots-dispatcher) — `update-snapshots.yml`
 
 ## Consumer-side alias pattern
 
@@ -477,3 +478,43 @@ Local renders drift from CI renders because of font/antialiasing differences acr
 4. The next PR-triggered run compares CI-captured baselines against CI-captured screenshots — zero-tolerance pixel matching works.
 
 The reusable does not declare a `permissions:` block — GitHub Actions does not evaluate the `inputs` context inside `jobs.<id>.permissions`, and a static `contents: write` on the reusable would exceed the token scope of test-only callers and trigger a startup failure. Callers always supply permissions themselves: test-only callers grant `contents: read` on the calling job (or workflow); callers that may set `update-baselines: true` grant `contents: write`.
+
+### Reusable — Update Visual Snapshots (Dispatcher)
+
+File: [`update-snapshots.yml`](.github/workflows/update-snapshots.yml). Human-in-the-loop dispatcher for the `/update-snapshots` PR-comment pattern (the same model Chromatic / Percy / Argos use). A maintainer comments `/update-snapshots` on a PR whose visual-tests check failed on an intentional UI change; this reusable verifies the commenter has write access, then dispatches the visual-tests workflow on the PR branch in baseline-refresh mode. The refreshed PNGs are committed back to the PR branch by the visual-tests reusable.
+
+The `issue_comment` trigger is not a valid `workflow_call` event, so the caller workflow owns the trigger and `if:` gate; this reusable owns the auth check, fork-PR refusal, branch resolution, dispatch, and confirmation comment.
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `target-workflow` | string | false | `visual-tests.yml` | Basename of the workflow to dispatch. Must declare a `workflow_dispatch` trigger and accept the input named by `dispatch-input-name`. |
+| `dispatch-input-name` | string | false | `update-baselines` | Name of the boolean `workflow_dispatch` input set to `true` on the dispatched run. |
+| `trigger-phrase` | string | false | `/update-snapshots` | Comment prefix that authorizes a dispatch. The caller gates on this prefix; the reusable does not re-check it. |
+| `allowed-permissions` | string | false | `admin,write,maintain` | Comma-separated repo permission levels allowed to trigger a dispatch. |
+| `confirmation-message` | string | false | `🔄 Dispatched baseline refresh on \`{ref}\`. Watch the run at {runs_url}. New baselines will be committed back to this PR if any pixels changed.` | Markdown body for the follow-up comment. Supports `{ref}` and `{runs_url}` placeholders. |
+
+Caller (thin shim that consumers drop into each repo):
+
+```yaml
+name: Update Visual Snapshots
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  dispatch:
+    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '/update-snapshots') }}
+    uses: kethalia/workflows/.github/workflows/update-snapshots.yml@<version>
+    permissions:
+      issues: write          # react to comment + post follow-up comment
+      pull-requests: read    # resolve PR head branch
+      actions: write         # dispatch the target workflow
+      contents: read
+```
+
+The caller's `if:` filter must match the `trigger-phrase` input (or omit the input to accept the default) — the reusable re-checks the prefix and fails loudly if they diverge.
+
+The `permissions:` block on the calling job is mandatory: reusable workflows cannot elevate beyond the caller's `GITHUB_TOKEN`, and on repos with the default read-only token the dispatch step will silently fail without these scopes.
+
+Trust boundary: `issue_comment` always loads workflow files from the default branch, never the PR HEAD copy. The `Check commenter permission` step in the reusable is the only auth gate — keep it intact. Fork PRs are refused by design: `workflow_dispatch` cannot target a branch that lives outside the target repo, so the reusable exits with an actionable error rather than silently no-opping.
