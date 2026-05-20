@@ -489,7 +489,7 @@ The `issue_comment` trigger is not a valid `workflow_call` event, so the caller 
 |---|---|---|---|---|
 | `target-workflow` | string | false | `visual-tests.yml` | Basename of the workflow to dispatch. Must declare a `workflow_dispatch` trigger and accept the input named by `dispatch-input-name`. |
 | `dispatch-input-name` | string | false | `update-baselines` | Name of the boolean `workflow_dispatch` input set to `true` on the dispatched run. |
-| `trigger-phrase` | string | false | `/update-snapshots` | Comment prefix that authorizes a dispatch. The caller gates on this prefix; the reusable does not re-check it. |
+| `trigger-phrase` | string | false | `/update-snapshots` | Comment prefix that authorizes a dispatch. The caller gates on this prefix; the reusable also re-checks it as a defense-in-depth guard. |
 | `allowed-permissions` | string | false | `admin,write,maintain` | Comma-separated repo permission levels allowed to trigger a dispatch. |
 | `confirmation-message` | string | false | `🔄 Dispatched baseline refresh on \`{ref}\`. Watch the run at {runs_url}. New baselines will be committed back to this PR if any pixels changed.` | Markdown body for the follow-up comment. Supports `{ref}` and `{runs_url}` placeholders. |
 
@@ -507,14 +507,15 @@ jobs:
     if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '/update-snapshots') }}
     uses: kethalia/workflows/.github/workflows/update-snapshots.yml@<version>
     permissions:
-      issues: write          # react to comment + post follow-up comment
-      pull-requests: read    # resolve PR head branch
+      pull-requests: write   # PR-context comment reactions + dispatch follow-up
+                             # (issue_comment on PRs routes through pull-requests,
+                             # not issues, despite the URL shape)
       actions: write         # dispatch the target workflow
-      contents: read
+      contents: read         # actions/github-script + gh CLI base scope
 ```
 
 The caller's `if:` filter must match the `trigger-phrase` input (or omit the input to accept the default) — the reusable re-checks the prefix and fails loudly if they diverge.
 
-The `permissions:` block on the calling job is mandatory: reusable workflows cannot elevate beyond the caller's `GITHUB_TOKEN`, and on repos with the default read-only token the dispatch step will silently fail without these scopes.
+The `permissions:` block on the caller (workflow- or job-level) is mandatory: reusable workflows cannot elevate beyond the caller's `GITHUB_TOKEN`, and on repos with the default read-only token the dispatch step will silently fail without these scopes.
 
 Trust boundary: `issue_comment` always loads workflow files from the default branch, never the PR HEAD copy. The `Check commenter permission` step in the reusable is the only auth gate — keep it intact. Fork PRs are refused by design: `workflow_dispatch` cannot target a branch that lives outside the target repo, so the reusable exits with an actionable error rather than silently no-opping.
