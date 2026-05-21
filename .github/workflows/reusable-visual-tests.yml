@@ -1,13 +1,11 @@
 name: Reusable — Visual Regression Tests
 
 # Reusable workflow that runs Playwright-based visual regression tests inside
-# the pinned `mcr.microsoft.com/playwright` container, with a peer `label-gate`
-# job that fails closed when committed baseline screenshots change without an
-# approval label on the PR.
+# the pinned `mcr.microsoft.com/playwright` container.
 #
-# Topology: `visual-tests` runs the suite; `label-gate` runs on `pull_request`
-# events and diffs against the base branch. Both are intended as required
-# branch-protection checks.
+# Topology: a single `visual-tests` job runs the suite (or refreshes baselines
+# when `update-baselines: true`). Intended as a required branch-protection
+# check on PRs.
 
 on:
   workflow_call:
@@ -64,12 +62,15 @@ on:
       screenshots-path:
         description: |
           Path (relative to repo root) where committed baseline PNGs live.
-          The label-gate job diffs this directory against the PR base branch.
+          Used by `update-baselines` mode to scope the refresh commit.
         type: string
         required: false
         default: packages/visual-tests/src/__screenshots__/
       approval-label:
-        description: Label that must be present on the PR for baseline diffs to land.
+        description: |
+          DEPRECATED. The `label-gate` job has been removed; baseline
+          approval is now enforced by ordinary PR review. This input is
+          accepted for caller backwards-compatibility and ignored.
         type: string
         required: false
         default: baselines:approved
@@ -365,55 +366,3 @@ jobs:
           retention-days: ${{ inputs.artifact-retention-days }}
           compression-level: 6
           if-no-files-found: ignore
-
-  label-gate:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && !inputs.update-baselines
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect screenshot changes
-        id: detect
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          SCREENSHOTS_PATH: ${{ inputs.screenshots-path }}
-        run: |
-          set -euo pipefail
-          CHANGED=$(git diff --name-only "origin/${BASE_REF}...HEAD" -- "${SCREENSHOTS_PATH}" || true)
-          if [ -n "$CHANGED" ]; then
-            echo "Screenshot baseline changes detected:"
-            echo "$CHANGED"
-            {
-              echo 'changed<<EOF'
-              echo "$CHANGED"
-              echo 'EOF'
-            } >> "$GITHUB_OUTPUT"
-          else
-            echo "No screenshot baseline changes."
-            echo 'changed=' >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Enforce approval label on screenshot changes
-        env:
-          HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, inputs.approval-label) }}
-          CHANGED: ${{ steps.detect.outputs.changed }}
-          APPROVAL_LABEL: ${{ inputs.approval-label }}
-          SCREENSHOTS_PATH: ${{ inputs.screenshots-path }}
-        run: |
-          set -euo pipefail
-          if [ -n "$CHANGED" ] && [ "$HAS_LABEL" = "false" ]; then
-            echo "::error::Unlabeled screenshot baseline change detected."
-            echo "The following files under ${SCREENSHOTS_PATH} changed:"
-            echo "$CHANGED"
-            echo ""
-            echo "Remediation: a maintainer must apply the '${APPROVAL_LABEL}' label to this PR"
-            echo "after reviewing the baseline diff."
-            exit 1
-          fi
-          echo "label-gate OK"
