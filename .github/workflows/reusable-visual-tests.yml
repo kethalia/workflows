@@ -66,14 +66,6 @@ on:
         type: string
         required: false
         default: packages/visual-tests/src/__screenshots__/
-      approval-label:
-        description: |
-          DEPRECATED. The `label-gate` job has been removed; baseline
-          approval is now enforced by ordinary PR review. This input is
-          accepted for caller backwards-compatibility and ignored.
-        type: string
-        required: false
-        default: baselines:approved
       timeout-minutes:
         description: Per-job timeout for the visual-tests run.
         type: number
@@ -88,8 +80,7 @@ on:
         description: |
           When true, run `update-command` instead of `test-command`, then
           commit any regenerated files under `screenshots-path` back to the
-          source branch. The `label-gate` job is skipped in this mode since
-          the entire point of the run is to produce baseline changes.
+          source branch.
 
           Intended to be wired to a `workflow_dispatch` trigger in the caller
           so a maintainer can refresh baselines from the same container CI

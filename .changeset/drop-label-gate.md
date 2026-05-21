@@ -1,5 +1,5 @@
 ---
-"@kethalia/workflows": minor
+"@kethalia/workflows": major
 ---
 
-Remove the `label-gate` job from `reusable-visual-tests.yml`. Baseline-approval enforcement was redundant with ordinary PR review and the `pull_request` trigger lacked the `labeled` activity type, so the gate stayed red until the workflow was manually re-run after the label was applied — pure friction for no added security. Callers that previously listed `label-gate` as a required branch-protection check must drop it from the required set after upgrading. The `approval-label` input is kept as accepted-but-ignored for caller backwards-compatibility.
+BREAKING: Remove the `label-gate` job and the `approval-label` input from `reusable-visual-tests.yml`. Baseline-approval enforcement was redundant with ordinary PR review and the `pull_request` trigger lacked the `labeled` activity type, so the gate stayed red until the workflow was manually re-run after the label was applied — pure friction for no added security. Callers must (1) drop `label-gate` from any required-check list in branch protection, and (2) remove `approval-label:` from their `with:` block — passing an unknown input now fails workflow startup.
