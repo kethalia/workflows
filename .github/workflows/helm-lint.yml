@@ -101,9 +101,11 @@ jobs:
           set -euo pipefail
           if [ -n "$CHARTS_INPUT" ]; then
             raw="$CHARTS_INPUT"
+            source="charts-input"
           elif [ -n "$DISCOVERY_CMD" ]; then
             echo "Running chart-discovery-command: $DISCOVERY_CMD"
             raw=$(bash -c "$DISCOVERY_CMD")
+            source="discovery-command"
           else
             echo "::error::Neither 'charts' nor 'chart-discovery-command' was provided"
             exit 1
@@ -117,7 +119,11 @@ jobs:
               | sed 's|/Chart\.yaml$||'
           )
           if [ "${#charts[@]}" -eq 0 ]; then
-            echo "::error::Chart discovery produced no paths"
+            if [ "$source" = "charts-input" ]; then
+              echo "::error::'charts' input contained no non-blank entries"
+            else
+              echo "::error::'chart-discovery-command' produced no paths"
+            fi
             exit 1
           fi
           json="["
