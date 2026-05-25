@@ -86,8 +86,16 @@ on:
         default: "🔄 Dispatched baseline refresh on `{ref}`. Watch the run at {runs_url}. New baselines will be committed back to this PR if any pixels changed."
 
 jobs:
+  resolve-runner:
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v2.0.0
+
   dispatch:
-    runs-on: ubuntu-latest
+    needs: [resolve-runner]
+    # Resolution follows `resolve-runner.yml` — `vars.RUNNER_HEAVY` on the
+    # caller repo (or org-level default) selects the label; falls back to
+    # `self-hosted`. Pinned to the heavy tier to match `reusable-visual-tests.yml`
+    # so dispatcher and dispatched run land on the same runner pool.
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
     # NOTE: no job-level `permissions:` block by design — see header doc.
     # The caller (workflow- or job-level) must grant: pull-requests: write, actions: write, contents: read.
     steps:
