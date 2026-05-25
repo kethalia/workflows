@@ -91,11 +91,11 @@ jobs:
 
   dispatch:
     needs: [resolve-runner]
-    # Light tier: dispatcher only — API calls, no build work.
-    # Resolution follows `resolve-runner.yml` — `vars.RUNNER_LIGHT` on the
+    # Resolution follows `resolve-runner.yml` — `vars.RUNNER_HEAVY` on the
     # caller repo (or org-level default) selects the label; falls back to
-    # `ubuntu-latest`.
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    # `self-hosted`. Pinned to the heavy tier to match `reusable-visual-tests.yml`
+    # so dispatcher and dispatched run land on the same runner pool.
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
     # NOTE: no job-level `permissions:` block by design — see header doc.
     # The caller (workflow- or job-level) must grant: pull-requests: write, actions: write, contents: read.
     steps:
