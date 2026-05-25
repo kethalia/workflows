@@ -125,8 +125,18 @@ concurrency:
   cancel-in-progress: ${{ !inputs.update-baselines }}
 
 jobs:
+  resolve-runner:
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v2.0.0
+
   visual-tests:
-    runs-on: ubuntu-latest
+    needs: [resolve-runner]
+    # Heavy tier: the suite runs Playwright in a container and is CPU/IO-bound.
+    # Resolution follows `resolve-runner.yml` — `vars.RUNNER_HEAVY` on the
+    # caller repo (or org-level default) selects the label; falls back to
+    # `self-hosted`. Self-hosted runners consuming this workflow must have
+    # Docker available and be able to pull the Playwright image, since the
+    # job runs inside `container:`.
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     # No `permissions:` block here. GitHub Actions does NOT evaluate
     # expressions in `jobs.<id>.permissions`, and declaring a static
