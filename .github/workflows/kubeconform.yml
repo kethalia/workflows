@@ -1,0 +1,45 @@
+name: CI — Kubeconform
+
+# Validates raw Kubernetes manifests (not helm-rendered) with kubeconform.
+# For chart validation, use `helm-lint.yml` with `validate-templates: true`.
+
+on:
+  workflow_call:
+    inputs:
+      install-command:
+        description: |
+          Command to install kubeconform on the runner (e.g., "make install-kubeconform").
+          Skipped when the runner image ships kubeconform already (set to "").
+        type: string
+        required: false
+        default: ""
+      lint-command:
+        description: |
+          Command that runs kubeconform against the repo's manifests
+          (e.g., "make lint-manifests"). Required.
+        type: string
+        required: true
+      timeout-minutes:
+        description: Job timeout in minutes
+        type: number
+        required: false
+        default: 10
+
+jobs:
+  resolve-runner:
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.0.0
+
+  kubeconform:
+    name: Kubeconform
+    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
+    needs: [resolve-runner]
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kubeconform
+        if: inputs.install-command != ''
+        run: ${{ inputs.install-command }}
+      - name: Lint manifests
+        run: ${{ inputs.lint-command }}

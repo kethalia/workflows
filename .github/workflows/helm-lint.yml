@@ -17,6 +17,27 @@ on:
         type: boolean
         required: false
         default: true
+      validate-templates:
+        description: |
+          When true, validate the rendered templates with kubeconform after
+          `helm template`. Requires `kubernetes-version` to target a specific
+          API set. Useful for charts that ship pure k8s manifests (no CRDs
+          beyond well-known ones).
+        type: boolean
+        required: false
+        default: false
+      kubernetes-version:
+        description: |
+          Kubernetes API version passed to kubeconform (-kubernetes-version).
+          Only applies when `validate-templates` is true.
+        type: string
+        required: false
+        default: "1.30.0"
+      kubeconform-version:
+        description: kubeconform release tag (e.g., v0.6.7)
+        type: string
+        required: false
+        default: v0.6.7
       runs-on:
         description: |
           Runner label for the lint matrix jobs. When empty, falls back to the
@@ -114,6 +135,33 @@ jobs:
           chart_name=$(basename "${{ matrix.chart }}")
           helm template "$chart_name" "${{ matrix.chart }}" > ".helm-render/${chart_name}.yaml"
           echo "Rendered $(wc -l < ".helm-render/${chart_name}.yaml") lines for ${chart_name}"
+
+      - name: Install kubeconform
+        if: ${{ inputs.validate-templates }}
+        env:
+          KUBECONFORM_VERSION: ${{ inputs.kubeconform-version }}
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar xz -C "$tmp" kubeconform
+          sudo install -m 0755 "$tmp/kubeconform" /usr/local/bin/kubeconform
+          kubeconform -v
+
+      - name: Validate rendered templates (kubeconform)
+        if: ${{ inputs.validate-templates }}
+        env:
+          K8S_VERSION: ${{ inputs.kubernetes-version }}
+        run: |
+          set -euo pipefail
+          chart_name=$(basename "${{ matrix.chart }}")
+          kubeconform \
+            -kubernetes-version "$K8S_VERSION" \
+            -strict \
+            -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            ".helm-render/${chart_name}.yaml"
 
       - name: Compute artifact name
         id: artifact-name
