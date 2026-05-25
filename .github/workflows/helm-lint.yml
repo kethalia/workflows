@@ -4,9 +4,35 @@ on:
   workflow_call:
     inputs:
       charts:
-        description: Newline-separated list of chart paths (relative to caller repo root)
+        description: |
+          Newline-separated list of chart paths (relative to caller repo root).
+          Either `charts` or `chart-discovery-command` must be provided. When
+          both are set, `charts` wins and discovery is skipped.
         type: string
-        required: true
+        required: false
+        default: ""
+      chart-discovery-command:
+        description: |
+          Optional bash command that prints newline-separated chart paths to
+          stdout. Lines ending in `/Chart.yaml` are reduced to their parent
+          directory; other lines are treated as chart directories as-is.
+          Useful when chart layout is dynamic (e.g. `find infrastructure -name
+          Chart.yaml -not -path '*/charts/*'`). Ignored when `charts` is set.
+        type: string
+        required: false
+        default: ""
+      kubeconform-schema-locations:
+        description: |
+          Newline-separated list of `-schema-location` arguments passed to
+          kubeconform when `validate-templates` is true. Defaults to
+          `default` + the datreeio CRDs catalog. Provide your own values
+          (one per line) to override — pass `default` explicitly if you
+          still want the bundled k8s schemas alongside custom CRD sources.
+        type: string
+        required: false
+        default: |
+          default
+          https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
       helm-version:
         description: Helm version to install via azure/setup-helm
         type: string
@@ -63,15 +89,41 @@ jobs:
     outputs:
       matrix: ${{ steps.build-matrix.outputs.matrix }}
     steps:
+      - uses: actions/checkout@v4
+        if: ${{ inputs.charts == '' && inputs.chart-discovery-command != '' }}
+
       - id: build-matrix
         name: Build chart matrix
         env:
           CHARTS_INPUT: ${{ inputs.charts }}
+          DISCOVERY_CMD: ${{ inputs.chart-discovery-command }}
         run: |
-          # Split newline-separated input, drop blanks, emit JSON array
-          mapfile -t charts < <(printf '%s\n' "$CHARTS_INPUT" | sed 's/[[:space:]]\+$//' | grep -v '^[[:space:]]*$')
+          set -euo pipefail
+          if [ -n "$CHARTS_INPUT" ]; then
+            raw="$CHARTS_INPUT"
+            source="charts-input"
+          elif [ -n "$DISCOVERY_CMD" ]; then
+            echo "Running chart-discovery-command: $DISCOVERY_CMD"
+            raw=$(bash -c "$DISCOVERY_CMD")
+            source="discovery-command"
+          else
+            echo "::error::Neither 'charts' nor 'chart-discovery-command' was provided"
+            exit 1
+          fi
+          # Normalize: strip trailing whitespace, drop blanks, reduce
+          # */Chart.yaml entries to their parent directory.
+          mapfile -t charts < <(
+            printf '%s\n' "$raw" \
+              | sed 's/[[:space:]]\+$//' \
+              | grep -v '^[[:space:]]*$' \
+              | sed 's|/Chart\.yaml$||'
+          )
           if [ "${#charts[@]}" -eq 0 ]; then
-            echo "::error::No chart paths provided in 'charts' input"
+            if [ "$source" = "charts-input" ]; then
+              echo "::error::'charts' input contained no non-blank entries"
+            else
+              echo "::error::'chart-discovery-command' produced no paths"
+            fi
             exit 1
           fi
           json="["
@@ -169,15 +221,25 @@ jobs:
         if: ${{ inputs.validate-templates }}
         env:
           K8S_VERSION: ${{ inputs.kubernetes-version }}
+          SCHEMA_LOCATIONS: ${{ inputs.kubeconform-schema-locations }}
         run: |
           set -euo pipefail
           chart_name=$(basename "${{ matrix.chart }}")
+          schema_args=()
+          while IFS= read -r loc; do
+            loc=$(printf '%s' "$loc" | sed 's/[[:space:]]\+$//')
+            [ -z "$loc" ] && continue
+            schema_args+=(-schema-location "$loc")
+          done <<< "$SCHEMA_LOCATIONS"
+          if [ "${#schema_args[@]}" -eq 0 ]; then
+            echo "::error::kubeconform-schema-locations resolved to an empty list"
+            exit 1
+          fi
           kubeconform \
             -kubernetes-version "$K8S_VERSION" \
             -strict \
             -summary \
-            -schema-location default \
-            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            "${schema_args[@]}" \
             ".helm-render/${chart_name}.yaml"
 
       - name: Compute artifact name
