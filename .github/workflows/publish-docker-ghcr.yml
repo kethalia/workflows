@@ -40,7 +40,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.0.0
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.1.0
 
   publish:
     name: Publish ${{ inputs.image-name }}
