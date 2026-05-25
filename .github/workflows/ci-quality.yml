@@ -48,6 +48,16 @@ on:
         type: string
         required: false
         default: ""
+      shellcheck-command:
+        description: ShellCheck command for bash scripts (e.g., "make lint-shell"). Empty = skip.
+        type: string
+        required: false
+        default: ""
+      cspell-command:
+        description: cspell spelling check command (e.g., "pnpm cspell '**/*.md'"). Empty = skip.
+        type: string
+        required: false
+        default: ""
 
 jobs:
   resolve-runner:
@@ -137,6 +147,32 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
       - run: ${{ inputs.knip-command }}
+
+  # -------------------------------------------------------------------------
+  # ShellCheck (bash static analysis — no pnpm required)
+  # -------------------------------------------------------------------------
+  shellcheck:
+    name: ShellCheck
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    if: inputs.shellcheck-command != ''
+    steps:
+      - uses: actions/checkout@v4
+      - run: ${{ inputs.shellcheck-command }}
+
+  # -------------------------------------------------------------------------
+  # cspell (spelling check across source/docs)
+  # -------------------------------------------------------------------------
+  cspell:
+    name: CSpell
+    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [resolve-runner]
+    if: inputs.cspell-command != ''
+    steps:
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+      - run: ${{ inputs.cspell-command }}
 
   # -------------------------------------------------------------------------
   # Madge (circular dependency detection)
