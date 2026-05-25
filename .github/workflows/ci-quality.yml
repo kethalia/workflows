@@ -61,7 +61,7 @@ on:
 
 jobs:
   resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.0.0
+    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.1.0
 
   # -------------------------------------------------------------------------
   # Package Verify (downloads build artifact from caller workflow)
@@ -115,7 +115,7 @@ jobs:
     needs: [resolve-runner]
     if: inputs.audit
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.0.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.1.0
         with:
           node-version: ${{ inputs.node-version }}
       - run: pnpm audit --audit-level=${{ inputs.audit-level }}
@@ -129,7 +129,7 @@ jobs:
     needs: [resolve-runner]
     if: inputs.sherif-command != ''
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.0.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.1.0
         with:
           node-version: ${{ inputs.node-version }}
       - run: ${{ inputs.sherif-command }}
@@ -143,7 +143,7 @@ jobs:
     needs: [resolve-runner]
     if: inputs.knip-command != ''
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.0.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.1.0
         with:
           node-version: ${{ inputs.node-version }}
       - run: ${{ inputs.knip-command }}
@@ -169,7 +169,7 @@ jobs:
     needs: [resolve-runner]
     if: inputs.cspell-command != ''
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.0.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.1.0
         with:
           node-version: ${{ inputs.node-version }}
       - run: ${{ inputs.cspell-command }}
@@ -183,7 +183,7 @@ jobs:
     needs: [resolve-runner]
     if: inputs.madge-command != ''
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.0.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.1.0
         with:
           node-version: ${{ inputs.node-version }}
       - run: ${{ inputs.madge-command }}
