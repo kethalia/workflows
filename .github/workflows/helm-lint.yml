@@ -140,11 +140,28 @@ jobs:
         if: ${{ inputs.validate-templates }}
         env:
           KUBECONFORM_VERSION: ${{ inputs.kubeconform-version }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
         run: |
           set -euo pipefail
+          case "$RUNNER_OS" in
+            Linux)   os=linux ;;
+            macOS)   os=darwin ;;
+            Windows) echo "kubeconform install on Windows runners is not supported by this reusable" >&2; exit 1 ;;
+            *) echo "Unsupported runner OS: $RUNNER_OS" >&2; exit 1 ;;
+          esac
+          case "$RUNNER_ARCH" in
+            X64)   arch=amd64 ;;
+            ARM64) arch=arm64 ;;
+            *) echo "Unsupported runner arch: $RUNNER_ARCH" >&2; exit 1 ;;
+          esac
+          asset="kubeconform-${os}-${arch}.tar.gz"
+          base="https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}"
           tmp=$(mktemp -d)
-          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
-            | tar xz -C "$tmp" kubeconform
+          curl -fsSL -o "$tmp/$asset" "$base/$asset"
+          curl -fsSL -o "$tmp/CHECKSUMS" "$base/CHECKSUMS"
+          ( cd "$tmp" && grep " $asset\$" CHECKSUMS | sha256sum -c - )
+          tar xz -C "$tmp" -f "$tmp/$asset" kubeconform
           sudo install -m 0755 "$tmp/kubeconform" /usr/local/bin/kubeconform
           kubeconform -v
 

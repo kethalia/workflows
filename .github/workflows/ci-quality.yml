@@ -164,7 +164,7 @@ jobs:
   # cspell (spelling check across source/docs)
   # -------------------------------------------------------------------------
   cspell:
-    name: cspell
+    name: CSpell
     runs-on: ${{ needs.resolve-runner.outputs.light }}
     needs: [resolve-runner]
     if: inputs.cspell-command != ''
