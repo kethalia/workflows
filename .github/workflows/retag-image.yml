@@ -23,7 +23,7 @@ on:
         type: string
         required: true
       registry:
-        description: Container registry hostname.
+        description: Container registry hostname. Must be ghcr.io because this workflow authenticates with GITHUB_TOKEN.
         type: string
         required: false
         default: ghcr.io
@@ -64,29 +64,132 @@ jobs:
         id: ref
         env:
           INPUT_OWNER: ${{ inputs.owner }}
+          INPUT_IMAGE: ${{ inputs.image }}
+          INPUT_REGISTRY: ${{ inputs.registry }}
         run: |
           set -euo pipefail
           owner="${INPUT_OWNER:-${GITHUB_REPOSITORY_OWNER}}"
           owner="${owner,,}"
-          image="${{ inputs.image }}"
+          image="${INPUT_IMAGE}"
           image="${image,,}"
-          ref="${{ inputs.registry }}/${owner}/${image}"
-          echo "owner=${owner}" >> "$GITHUB_OUTPUT"
-          echo "image=${image}" >> "$GITHUB_OUTPUT"
-          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          registry="${INPUT_REGISTRY}"
+          if [ "${registry}" != "ghcr.io" ]; then
+            echo "::error::retag-image.yml supports only ghcr.io when authenticating with GITHUB_TOKEN; got ${registry}" >&2
+            exit 1
+          fi
+          if [[ ! "${owner}" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+            echo "::error::Invalid GHCR owner namespace: ${owner}" >&2
+            exit 1
+          fi
+          if [[ ! "${image}" =~ ^[a-z0-9]+([._/-][a-z0-9]+)*$ ]]; then
+            echo "::error::Invalid GHCR image name: ${image}" >&2
+            exit 1
+          fi
+          ref="${registry}/${owner}/${image}"
+          printf 'owner=%s\n' "${owner}" >> "$GITHUB_OUTPUT"
+          printf 'image=%s\n' "${image}" >> "$GITHUB_OUTPUT"
+          printf 'registry=%s\n' "${registry}" >> "$GITHUB_OUTPUT"
+          printf 'ref=%s\n' "${ref}" >> "$GITHUB_OUTPUT"
           echo "Resolved image reference: ${ref}"
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Log in to ${{ inputs.registry }}
+      - name: Log in to ghcr.io
         uses: docker/login-action@v3
         with:
-          registry: ${{ inputs.registry }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install crane
-        uses: imjasonh/setup-crane@v0.4
+        env:
+          CRANE_VERSION: v0.21.6
+        run: |
+          set -euo pipefail
+
+          os="${RUNNER_OS}"
+          if [ "${os}" = "macOS" ]; then
+            os="Darwin"
+          fi
+
+          raw_arch="$(uname -m)"
+          case "${raw_arch}" in
+            x86_64 | amd64)
+              arch="x86_64"
+              ;;
+            aarch64 | arm64)
+              arch="arm64"
+              ;;
+            *)
+              echo "::error::Unsupported crane install architecture: ${raw_arch}" >&2
+              exit 1
+              ;;
+          esac
+
+          out="crane"
+          if [ "${os}" = "Windows" ]; then
+            out="crane.exe"
+          fi
+
+          archive="go-containerregistry_${os}_${arch}.tar.gz"
+          case "${archive}" in
+            go-containerregistry_Darwin_arm64.tar.gz)
+              expected_sha="a124f297d1e63e8b6c63c2463e43565290d2fd074c1dadb5ca73d737bc7b2484"
+              ;;
+            go-containerregistry_Darwin_x86_64.tar.gz)
+              expected_sha="f1e653737a1d6e8a412734d0ac25009e04eccec98853be2eb59b8c744dede834"
+              ;;
+            go-containerregistry_Linux_arm64.tar.gz)
+              expected_sha="6f61571ca0c2a5da27c2927fcb143255ccb2b74b8977dfcb44645b372ab0f951"
+              ;;
+            go-containerregistry_Linux_x86_64.tar.gz)
+              expected_sha="7ebbdcd05b652345c1f5105f8475e518534b90d66f3bdb50017be63f426ea435"
+              ;;
+            go-containerregistry_Windows_arm64.tar.gz)
+              expected_sha="f0a8f5f60c9b7a52265d84b928a6cbba8fda6d7ae32bd98f5d91ee745f6b4e9b"
+              ;;
+            go-containerregistry_Windows_x86_64.tar.gz)
+              expected_sha="fb78f814f68ab47266458f319ca7e642a303453ea25c8993a14eb9850c56e870"
+              ;;
+            *)
+              echo "::error::Unsupported crane install target: ${archive}" >&2
+              exit 1
+              ;;
+          esac
+
+          release_url="https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}"
+          tmp="$(mktemp -d)"
+          bin_dir="${RUNNER_TEMP}/crane-${CRANE_VERSION}"
+          mkdir -p "${bin_dir}"
+          trap 'rm -rf "${tmp}"' EXIT
+
+          curl -fsSL "${release_url}/${archive}" -o "${tmp}/${archive}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            actual_sha="$(sha256sum "${tmp}/${archive}" | awk '{print $1}')"
+          else
+            actual_sha="$(shasum -a 256 "${tmp}/${archive}" | awk '{print $1}')"
+          fi
+          if [ "${actual_sha}" != "${expected_sha}" ]; then
+            echo "::error::Checksum mismatch for ${archive}: expected ${expected_sha}, got ${actual_sha}" >&2
+            exit 1
+          fi
+
+          tar -xzf "${tmp}/${archive}" -C "${bin_dir}" "${out}"
+          chmod +x "${bin_dir}/${out}"
+          if [ "${out}" != "crane" ]; then
+            cp "${bin_dir}/${out}" "${bin_dir}/crane"
+          fi
+          echo "${bin_dir}" >> "${GITHUB_PATH}"
+          "${bin_dir}/crane" version
+
+      - name: Log in to ghcr.io for crane
+        env:
+          REGISTRY: ghcr.io
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "${REGISTRY_PASSWORD}" | crane auth login "${REGISTRY}" --username "${REGISTRY_USERNAME}" --password-stdin
 
       - name: Retag via buildx imagetools (no rebuild)
         id: retag
