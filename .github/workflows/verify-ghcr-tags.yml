@@ -41,15 +41,9 @@ on:
         type: string
         required: false
         default: ""
-      runner:
-        description: Runner label (resolved by caller via resolve-runner.yml).
-        type: string
-        required: false
-        default: ubuntu-latest
-
 jobs:
   verify:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: read

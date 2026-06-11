@@ -11,10 +11,6 @@ Private or otherwise inaccessible repos do not appear in `gh search code` result
 - [ ] chillwhales/chillpass — workflow refs in `.github/workflows/{ci,release,ghcr-prune,smoke-build-and-push,build-images}.yml`
 - [ ] chillwhales/lsp-indexer — workflow ref in `.github/workflows/ci.yml`
 
-## kethalia
-
-- [ ] kethalia/github-runners — workflow ref in `.github/workflows/runner-image.yml`
-
 ## phlox-labs
 
 No matches found via `gh search code` for workflow/action references (may need manual check for private repos).

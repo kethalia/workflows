@@ -68,9 +68,6 @@ on:
         default: "**/*.[jt]s\n**/*.[jt]sx"
 
 jobs:
-  resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.2.0
-
   # -------------------------------------------------------------------------
   # Prepare: install dependencies once and cache node_modules so downstream
   # jobs can restore instead of running `pnpm install` from scratch.
@@ -81,8 +78,7 @@ jobs:
   # -------------------------------------------------------------------------
   prepare:
     name: Prepare
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     outputs:
       modules-key: ${{ steps.key.outputs.modules }}
     steps:
@@ -113,8 +109,8 @@ jobs:
   # -------------------------------------------------------------------------
   format:
     name: Format
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner, prepare]
+    runs-on: ubuntu-latest
+    needs: [prepare]
     if: inputs.format-command != ''
     steps:
       - uses: actions/checkout@v4
@@ -146,8 +142,8 @@ jobs:
   # -------------------------------------------------------------------------
   lint:
     name: Lint
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner, prepare]
+    runs-on: ubuntu-latest
+    needs: [prepare]
     if: inputs.lint-command != ''
     steps:
       - uses: actions/checkout@v4
@@ -182,8 +178,8 @@ jobs:
   # -------------------------------------------------------------------------
   build:
     name: Build
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner, prepare]
+    runs-on: ubuntu-latest
+    needs: [prepare]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -223,8 +219,8 @@ jobs:
   # -------------------------------------------------------------------------
   typecheck:
     name: Typecheck
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner, prepare, build]
+    runs-on: ubuntu-latest
+    needs: [prepare, build]
     if: inputs.typecheck-command != ''
     steps:
       - uses: actions/checkout@v4
@@ -263,8 +259,8 @@ jobs:
   # -------------------------------------------------------------------------
   test:
     name: Test (Node ${{ matrix.node-version }})
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner, prepare, build]
+    runs-on: ubuntu-latest
+    needs: [prepare, build]
     if: inputs.test-command != ''
     strategy:
       matrix:
@@ -313,8 +309,8 @@ jobs:
   # -------------------------------------------------------------------------
   coverage:
     name: Coverage Report
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner, test]
+    runs-on: ubuntu-latest
+    needs: [test]
     if: inputs.test-command != '' && github.event_name == 'pull_request'
     permissions:
       contents: read

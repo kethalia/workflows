@@ -1,7 +1,7 @@
 # Reusable workflow: build a stack of Docker images on PR + push.
 #
-# Owns the orchestration that every consuming repo was duplicating: runner
-# resolution, short-SHA computation, matrix fan-out, and per-event tag policy.
+# Owns the orchestration that every consuming repo was duplicating: short-SHA
+# computation, matrix fan-out, and per-event tag policy.
 # Internally calls `build-and-push.yml` per service to keep the registry-backed
 # BuildKit cache contract in one place.
 #
@@ -60,13 +60,9 @@ on:
         required: true
 
 jobs:
-  resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.2.0
-
   prep:
     name: Prepare matrix
-    needs: [resolve-runner]
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       sha_short: ${{ steps.meta.outputs.sha_short }}

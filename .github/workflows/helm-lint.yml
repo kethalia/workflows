@@ -64,26 +64,13 @@ on:
         type: string
         required: false
         default: v0.6.7
-      runs-on:
-        description: |
-          Runner label for the lint matrix jobs. When empty, falls back to the
-          tiered resolver (`vars.RUNNER_HEAVY` → default `self-hosted`). Pass
-          a value to force a specific runner.
-        type: string
-        required: false
-        default: ""
-
 jobs:
-  resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.2.0
-
   # -------------------------------------------------------------------------
   # Setup — split newline-separated charts input into JSON matrix
   # -------------------------------------------------------------------------
   setup:
     name: Setup Matrix
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
@@ -141,8 +128,8 @@ jobs:
   # -------------------------------------------------------------------------
   lint:
     name: Helm Lint (${{ matrix.chart }})
-    needs: [resolve-runner, setup]
-    runs-on: ${{ inputs.runs-on != '' && inputs.runs-on || needs.resolve-runner.outputs.heavy }}
+    needs: [setup]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     strategy:
