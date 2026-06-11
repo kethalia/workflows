@@ -27,7 +27,7 @@
 #       permissions:
 #         contents: read
 #         packages: write
-#       uses: kethalia/workflows/.github/workflows/build-stack.yml@v3.2.0
+#       uses: kethalia/workflows/.github/workflows/build-stack.yml@v4.0.0
 #       secrets: inherit
 #       with:
 #         push: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
@@ -110,7 +110,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prep.outputs.matrix) }}
-    uses: kethalia/workflows/.github/workflows/build-and-push.yml@v3.2.0
+    uses: kethalia/workflows/.github/workflows/build-and-push.yml@v4.0.0
     secrets: inherit
     with:
       image: ${{ matrix.image }}

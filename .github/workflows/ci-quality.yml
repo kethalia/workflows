@@ -109,7 +109,7 @@ jobs:
     runs-on: ubuntu-latest
     if: inputs.audit
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.2.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v4.0.0
         with:
           node-version: ${{ inputs.node-version }}
       - run: pnpm audit --audit-level=${{ inputs.audit-level }}
@@ -122,7 +122,7 @@ jobs:
     runs-on: ubuntu-latest
     if: inputs.sherif-command != ''
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.2.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v4.0.0
         with:
           node-version: ${{ inputs.node-version }}
       - run: ${{ inputs.sherif-command }}
@@ -135,7 +135,7 @@ jobs:
     runs-on: ubuntu-latest
     if: inputs.knip-command != ''
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.2.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v4.0.0
         with:
           node-version: ${{ inputs.node-version }}
       - run: ${{ inputs.knip-command }}
@@ -159,7 +159,7 @@ jobs:
     runs-on: ubuntu-latest
     if: inputs.cspell-command != ''
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.2.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v4.0.0
         with:
           node-version: ${{ inputs.node-version }}
       - run: ${{ inputs.cspell-command }}
@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     if: inputs.madge-command != ''
     steps:
-      - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.2.0
+      - uses: kethalia/workflows/.github/actions/setup-pnpm@v4.0.0
         with:
           node-version: ${{ inputs.node-version }}
       - run: ${{ inputs.madge-command }}
