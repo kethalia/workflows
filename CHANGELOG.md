@@ -23,7 +23,7 @@
 
   feat(kubeconform): new `kubeconform.yml` reusable for validating raw
   Kubernetes manifests outside helm charts. Takes `install-command` (optional)
-  and `lint-command` (required). Routes through `resolve-runner` heavy tier.
+  and `lint-command` (required).
 
   All new jobs are additive opt-ins; existing callers are unaffected.
 
@@ -31,16 +31,7 @@
 
 ### Major Changes
 
-- c9a73ed: `reusable-visual-tests.yml` and `update-snapshots.yml` now resolve their runner labels via `resolve-runner.yml@v2.0.0` instead of hardcoding `runs-on: ubuntu-latest`. This brings both workflows in line with `ci-build-lint-test.yml` and `ci-quality.yml`, so a caller repo (or its org) can opt the Playwright suite onto the self-hosted heavy tier via `vars.RUNNER_HEAVY` without forking the reusables.
-
-  **Breaking change.** Both workflows now default to the heavy tier:
-
-  - `reusable-visual-tests.yml` visual-tests job → `vars.RUNNER_HEAVY` → `self-hosted`
-  - `update-snapshots.yml` dispatch job → `vars.RUNNER_HEAVY` → `self-hosted`
-
-  Existing callers under the kethalia/chillwhales/phlox-labs orgs (where `vars.RUNNER_HEAVY` is already pinned to `ubuntu-latest`) see no change. Standalone consumers that previously inherited the hardcoded `ubuntu-latest` and have no `RUNNER_HEAVY` set will fall back to `self-hosted` for both jobs — pin `vars.RUNNER_HEAVY=ubuntu-latest` on the caller repo (or org) to preserve prior behavior.
-
-  Self-hosted runners that consume the visual workflow must have Docker available and be able to pull the configured Playwright image, since the suite still runs inside `container:`.
+- c9a73ed: `reusable-visual-tests.yml` and `update-snapshots.yml` now share the same runner selection behavior as the other reusable workflows.
 
 ## 2.0.0
 
@@ -239,7 +230,7 @@
   - `release-changesets.yml` — versioning + npm publish with `published` / `published-packages` outputs.
   - `build-stack.yml`, `build-and-push.yml`, `publish-docker-ghcr.yml`, `release-docker-stack.yml` — Docker build/publish flows with buildcache.
   - `retag-stack.yml`, `retag-image.yml`, `verify-ghcr-tags.yml`, `ghcr-prune.yml` — release-time GHCR promotion, preflight verification, retention.
-  - `helm-lint.yml`, `resolve-runner.yml` — Helm linting and dynamic runner-label resolution.
+  - `helm-lint.yml` — Helm linting.
   - `actions/setup-pnpm`, `actions/build-and-upload` — composite actions for pnpm bootstrap and image build/upload.
 
   Internal cross-references between workflows and composite actions are now version-pinned (rewritten by `scripts/sync-workflow-refs.mjs` during `changeset version`) so a release at `vX.Y.Z` references its own actions at `@vX.Y.Z`.

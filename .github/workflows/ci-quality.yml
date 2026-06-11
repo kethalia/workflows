@@ -60,16 +60,12 @@ on:
         default: ""
 
 jobs:
-  resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.2.0
-
   # -------------------------------------------------------------------------
   # Package Verify (downloads build artifact from caller workflow)
   # -------------------------------------------------------------------------
   pkg-verify:
     name: Package Verify
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     if: inputs.verify-command != ''
     steps:
       - uses: actions/checkout@v4
@@ -91,8 +87,7 @@ jobs:
   # -------------------------------------------------------------------------
   changeset-check:
     name: Changeset Check
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     if: inputs.changeset-check && github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -111,8 +106,7 @@ jobs:
   # -------------------------------------------------------------------------
   audit:
     name: Audit
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     if: inputs.audit
     steps:
       - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.2.0
@@ -125,8 +119,7 @@ jobs:
   # -------------------------------------------------------------------------
   sherif:
     name: Sherif
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     if: inputs.sherif-command != ''
     steps:
       - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.2.0
@@ -139,8 +132,7 @@ jobs:
   # -------------------------------------------------------------------------
   knip:
     name: Knip
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     if: inputs.knip-command != ''
     steps:
       - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.2.0
@@ -153,8 +145,7 @@ jobs:
   # -------------------------------------------------------------------------
   shellcheck:
     name: ShellCheck
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     if: inputs.shellcheck-command != ''
     steps:
       - uses: actions/checkout@v4
@@ -165,8 +156,7 @@ jobs:
   # -------------------------------------------------------------------------
   cspell:
     name: CSpell
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     if: inputs.cspell-command != ''
     steps:
       - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.2.0
@@ -179,8 +169,7 @@ jobs:
   # -------------------------------------------------------------------------
   madge:
     name: Madge
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     if: inputs.madge-command != ''
     steps:
       - uses: kethalia/workflows/.github/actions/setup-pnpm@v3.2.0

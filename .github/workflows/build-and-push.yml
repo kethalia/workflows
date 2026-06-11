@@ -66,13 +66,9 @@ on:
         value: ${{ jobs.build-and-push.outputs.image-ref }}
 
 jobs:
-  resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.2.0
-
   build-and-push:
     name: Build ${{ inputs.image }}
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write

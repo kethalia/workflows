@@ -26,13 +26,9 @@ on:
         default: 10
 
 jobs:
-  resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.2.0
-
   kubeconform:
     name: Kubeconform
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read

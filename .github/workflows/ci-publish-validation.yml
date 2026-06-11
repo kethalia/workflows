@@ -15,16 +15,12 @@ on:
         default: ""
 
 jobs:
-  resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.2.0
-
   # -------------------------------------------------------------------------
   # Preview Release (PRs only, runs pkg-pr-new)
   # -------------------------------------------------------------------------
   preview:
     name: Preview Release
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     if: inputs.preview-packages != '' && github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4

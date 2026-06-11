@@ -12,13 +12,9 @@ on:
 permissions: {}
 
 jobs:
-  resolve-runner:
-    uses: ./.github/workflows/resolve-runner.yml
-
   seed:
     name: Seed throwaway source image
-    runs-on: ${{ needs.resolve-runner.outputs.heavy }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -57,8 +53,8 @@ jobs:
         smoke-${{ github.run_id }}-b
 
   assert-digests:
-    needs: [resolve-runner, smoke-retag]
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
+    needs: [smoke-retag]
+    runs-on: ubuntu-latest
     steps:
       - name: Assert source-digest matches every dest-digest
         env:

@@ -46,13 +46,9 @@ on:
         value: ${{ jobs.retag.outputs.dest-digests }}
 
 jobs:
-  resolve-runner:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@v3.2.0
-
   retag:
     name: Retag ${{ inputs.image }} (${{ inputs.source-tag }})
-    runs-on: ${{ needs.resolve-runner.outputs.light }}
-    needs: [resolve-runner]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write

@@ -4,8 +4,6 @@ Canonical home for the reusable GitHub Actions **workflows** and **composite act
 
 > **Always pin to a specific released version** (e.g. `@v1.0.0`). The examples in this README use `@<version>` as a placeholder — substitute the tag you intend to consume. See [Versioning](#versioning) for the available ref styles and recommendations.
 
-See also: [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md) for the heavy/light runner resolution model used by `resolve-runner.yml` and downstream consumers.
-
 ## Table of Contents
 
 - [Consumer-side alias pattern](#consumer-side-alias-pattern)
@@ -22,7 +20,6 @@ See also: [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md) for t
   - [Publish — Docker image to GHCR](#publish--docker-image-to-ghcr) — `publish-docker-ghcr.yml`
   - [Release — Changesets](#release--changesets) — `release-changesets.yml`
   - [Release — Docker stack](#release--docker-stack) — `release-docker-stack.yml`
-  - [Reusable — Resolve runner labels](#reusable--resolve-runner-labels) — `resolve-runner.yml`
   - [Retag — Single GHCR image](#retag--single-ghcr-image) — `retag-image.yml`
   - [Smoke — retag-image](#smoke--retag-image) — `internal-retag-smoke.yml`
   - [Retag — Docker stack (promote on release)](#retag--docker-stack-promote-on-release) — `retag-stack.yml`
@@ -237,8 +234,6 @@ File: [`helm-lint.yml`](.github/workflows/helm-lint.yml). Runs `helm lint` (opti
 | `charts` | string | true | — | Newline-separated list of chart paths (relative to caller repo root) |
 | `helm-version` | string | false | `v3.16.2` | Helm version to install via azure/setup-helm |
 | `strict` | boolean | false | `true` | Pass --strict to helm lint |
-| `runs-on` | string | false | `""` | Runner label for the lint matrix jobs. When empty, falls back to the tiered resolver (`vars.RUNNER_HEAVY` → default `self-hosted`). Pass a value to force a specific runner. |
-
 ```yaml
 jobs:
   helm:
@@ -324,23 +319,6 @@ jobs:
         }
 ```
 
-### Reusable — Resolve runner labels
-
-File: [`resolve-runner.yml`](.github/workflows/resolve-runner.yml). Emits `heavy` and `light` runner labels resolved from repo/org `vars`, used by downstream callers to pick a runner tier. See [.github/docs/RUNNER-TIERING.md](.github/docs/RUNNER-TIERING.md).
-
-(No inputs.)
-
-```yaml
-jobs:
-  runners:
-    uses: kethalia/workflows/.github/workflows/resolve-runner.yml@<version>
-  build:
-    needs: runners
-    runs-on: ${{ needs.runners.outputs.heavy }}
-    steps:
-      - run: echo build
-```
-
 ### Retag — Single GHCR image
 
 File: [`retag-image.yml`](.github/workflows/retag-image.yml). Repoints destination tags at the manifest digest of an existing source tag — no rebuild, no new bytes pushed. Manifest digests are preserved across the retag.
@@ -407,8 +385,6 @@ File: [`verify-ghcr-tags.yml`](.github/workflows/verify-ghcr-tags.yml). Asserts 
 | `packages` | string | true | — | JSON array of container package names under the org (e.g. '["chillpass", "chillpass-auth"]'). |
 | `sha` | string | false | `""` | Full git sha to verify. The short form (first 7 chars) is checked as `:sha-<short>`. Defaults to the PR head sha on pull_request events. |
 | `tag` | string | false | `""` | Explicit tag to verify (e.g., "v1.2.3"). Overrides `sha` when set. |
-| `runner` | string | false | `ubuntu-latest` | Runner label (resolved by caller via resolve-runner.yml). |
-
 ```yaml
 jobs:
   verify:
