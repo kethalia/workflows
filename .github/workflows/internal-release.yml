@@ -17,14 +17,22 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
     steps:
+      - name: Create release app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Persist GH_PAT (not the default GITHUB_TOKEN) into git's extraheader
-          # so subsequent `git push` from changesets/action can write to
-          # .github/workflows/*.yml. The env var on the changesets step alone
-          # is not enough — actions/checkout's extraheader takes precedence.
-          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          # Persist the app token into git's extraheader so changesets/action
+          # can push generated release PR commits that update workflow files.
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -46,14 +54,9 @@ jobs:
           title: "chore(release): version packages"
           commit: "chore(release): version packages"
         env:
-          # GH_PAT is required because changesets/action commits include
-          # changes to .github/workflows/*.yml (via sync-workflow-refs.mjs),
-          # which the default GITHUB_TOKEN cannot push without the
-          # `workflows` permission. Use a fine-grained PAT with
-          # contents:write + workflows:write + pull-requests:write
-          # (pull-requests:write is needed so changesets/action can open
-          # and update the version PR).
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          # The app token carries contents/workflows/pull-requests write
+          # permissions without relying on a long-lived PAT.
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
   tag-major:
     name: Move floating major tag
