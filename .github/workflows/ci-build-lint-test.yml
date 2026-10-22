@@ -8,6 +8,11 @@ on:
         type: number
         required: false
         default: 22
+      node-version-spec:
+        description: Exact Node.js version or range; overrides the legacy numeric node-version
+        type: string
+        required: false
+        default: ""
       build-command:
         description: Build command (e.g., "pnpm build")
         type: string
@@ -86,12 +91,12 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
           cache: pnpm
       - id: key
         name: Compute node_modules cache key
         run: |
-          echo "modules=${{ runner.os }}-node${{ inputs.node-version }}-modules-${{ hashFiles('**/pnpm-lock.yaml', '**/schema.prisma') }}" >> "$GITHUB_OUTPUT"
+          echo "modules=${{ runner.os }}-node${{ inputs.node-version-spec || inputs.node-version }}-modules-${{ hashFiles('**/pnpm-lock.yaml', '**/schema.prisma') }}" >> "$GITHUB_OUTPUT"
       - name: Cache node_modules
         id: modules-cache
         uses: actions/cache@v4
@@ -117,7 +122,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
           cache: pnpm
       - name: Restore node_modules
         uses: actions/cache@v4
@@ -150,7 +155,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
           cache: pnpm
       - name: Restore node_modules
         uses: actions/cache@v4
@@ -185,7 +190,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
           cache: pnpm
       - name: Restore node_modules
         uses: actions/cache@v4
@@ -227,7 +232,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
           cache: pnpm
       - name: Restore node_modules
         uses: actions/cache@v4
@@ -273,7 +278,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
       - name: Restore node_modules
-        if: matrix.node-version == inputs.node-version
+        if: matrix.node-version == (inputs.node-version-spec || inputs.node-version)
         uses: actions/cache@v4
         with:
           path: |
@@ -297,7 +302,10 @@ jobs:
       - name: Run tests
         run: ${{ inputs.test-command }}
       - name: Upload coverage reports
-        if: matrix.node-version == inputs.node-version
+        if: >-
+          matrix.node-version == (inputs.node-version-spec || inputs.node-version) ||
+          (!contains(fromJson(inputs.test-node-versions), inputs.node-version-spec || inputs.node-version) &&
+           strategy.job-index == 0)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.coverage-artifact-name }}

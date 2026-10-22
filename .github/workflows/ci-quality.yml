@@ -8,6 +8,11 @@ on:
         type: number
         required: false
         default: 22
+      node-version-spec:
+        description: Exact Node.js version or range; overrides the legacy numeric node-version
+        type: string
+        required: false
+        default: ""
       verify-command:
         description: Package verification command (e.g., "pnpm validate:publish")
         type: string
@@ -72,7 +77,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Download build artifacts
@@ -96,7 +101,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm changeset status --since=origin/${{ inputs.base-branch }}
@@ -111,7 +116,7 @@ jobs:
     steps:
       - uses: kethalia/workflows/.github/actions/setup-pnpm@v4.0.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
       - run: pnpm audit --audit-level=${{ inputs.audit-level }}
 
   # -------------------------------------------------------------------------
@@ -124,7 +129,7 @@ jobs:
     steps:
       - uses: kethalia/workflows/.github/actions/setup-pnpm@v4.0.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
       - run: ${{ inputs.sherif-command }}
 
   # -------------------------------------------------------------------------
@@ -137,7 +142,7 @@ jobs:
     steps:
       - uses: kethalia/workflows/.github/actions/setup-pnpm@v4.0.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
       - run: ${{ inputs.knip-command }}
 
   # -------------------------------------------------------------------------
@@ -161,7 +166,7 @@ jobs:
     steps:
       - uses: kethalia/workflows/.github/actions/setup-pnpm@v4.0.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
       - run: ${{ inputs.cspell-command }}
 
   # -------------------------------------------------------------------------
@@ -174,5 +179,5 @@ jobs:
     steps:
       - uses: kethalia/workflows/.github/actions/setup-pnpm@v4.0.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-spec || inputs.node-version }}
       - run: ${{ inputs.madge-command }}
