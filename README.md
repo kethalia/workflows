@@ -122,6 +122,11 @@ jobs:
 
 File: [`ci-build-lint-test.yml`](.github/workflows/ci-build-lint-test.yml). Build → lint → format → typecheck → test (matrix) pipeline with optional incremental build cache and artifact upload.
 
+Coverage comes from the matrix entry matching the effective setup version. If
+the matrix uses different selectors (for example `[22]` with an exact setup pin
+`22.23.4`), its first entry publishes coverage instead. Node modules are restored
+from the prepare cache only for an exact matching matrix entry.
+
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `node-version` | number | false | `22` | Legacy major-version selector |
