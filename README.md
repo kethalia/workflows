@@ -124,7 +124,8 @@ File: [`ci-build-lint-test.yml`](.github/workflows/ci-build-lint-test.yml). Buil
 
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `node-version` | number | false | `22` | Node.js version |
+| `node-version` | number | false | `22` | Legacy major-version selector |
+| `node-version-spec` | string | false | `""` | Exact version or range, e.g. `"22.23.4"`; takes precedence over `node-version`. Set `test-node-versions` separately for build/test matrix jobs. |
 | `build-command` | string | true | — | Build command (e.g., "pnpm build") |
 | `lint-command` | string | false | `""` | Lint command (e.g., "pnpm lint") |
 | `format-command` | string | false | `""` | Format check command (e.g., "pnpm format:check") |
@@ -183,7 +184,8 @@ File: [`ci-quality.yml`](.github/workflows/ci-quality.yml). Aggregate quality ga
 
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `node-version` | number | false | `22` | Node.js version |
+| `node-version` | number | false | `22` | Legacy major-version selector |
+| `node-version-spec` | string | false | `""` | Exact version or range, e.g. `"22.23.4"`; takes precedence over `node-version`. Set `test-node-versions` separately for build/test matrix jobs. |
 | `verify-command` | string | false | `""` | Package verification command (e.g., "pnpm validate:publish") |
 | `changeset-check` | boolean | false | `true` | Whether to run changeset status check on PRs |
 | `base-branch` | string | false | `main` | Base branch for changeset comparison (e.g., "main") |
