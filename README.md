@@ -1,6 +1,6 @@
 # kethalia/workflows
 
-Canonical home for the reusable GitHub Actions **workflows** and **composite actions** shared across the kethalia, chillwhales, and phlox-labs orgs. Consumers reference workflows via absolute `uses:` (e.g. `uses: kethalia/workflows/.github/workflows/ci-build-lint-test.yml@<version>`) — no per-repo copies, one place to fix, one place to evolve.
+Canonical home for the reusable GitHub Actions **workflows** and **composite actions** shared across the Kethalia and Chillwhales organizations. Consumers reference workflows via absolute `uses:` (e.g. `uses: kethalia/workflows/.github/workflows/ci-build-lint-test.yml@<version>`) — no per-repo copies, one place to fix, one place to evolve.
 
 > **Always pin to a specific released version** (e.g. `@v1.0.0`). The examples in this README use `@<version>` as a placeholder — substitute the tag you intend to consume. See [Versioning](#versioning) for the available ref styles and recommendations.
 

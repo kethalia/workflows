@@ -11,10 +11,6 @@ Private or otherwise inaccessible repos do not appear in `gh search code` result
 - [ ] chillwhales/chillpass — workflow refs in `.github/workflows/{ci,release,ghcr-prune,smoke-build-and-push,build-images}.yml`
 - [ ] chillwhales/lsp-indexer — workflow ref in `.github/workflows/ci.yml`
 
-## phlox-labs
-
-No matches found via `gh search code` for workflow/action references (may need manual check for private repos).
-
 ## Documentation references
 
 These hits are inside docs and planning artifacts — no `uses:` line to rewrite, but worth a sweep when the source repo is archived.
@@ -22,4 +18,3 @@ These hits are inside docs and planning artifacts — no `uses:` line to rewrite
 - chillwhales/chillpass — agent planning notes
 - chillwhales/lsp-indexer — agent planning notes
 - kethalia/second-brain — `Projects/ChillWhales Org Automation.md`, `Skills/devops-infra/references/ci-cd-patterns.md`
-- phlox-labs/.github — agent planning notes
