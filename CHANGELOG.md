@@ -1,5 +1,13 @@
 # @kethalia/workflows
 
+## 4.0.1
+
+### Patch Changes
+
+- 6854163: Allow exact Node.js security versions through a string `node-version-spec` input
+  in the build/lint/test and quality workflows. Preserve the existing numeric
+  `node-version` input for callers selecting a major version.
+
 ## 4.0.0
 
 ### Major Changes
