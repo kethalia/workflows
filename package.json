@@ -2,7 +2,7 @@
   "name": "@kethalia/workflows",
   "version": "4.0.0",
   "private": true,
-  "description": "Org-wide reusable GitHub Actions workflows and composite actions shared across kethalia, chillwhales, and phlox-labs.",
+  "description": "Org-wide reusable GitHub Actions workflows and composite actions shared across Kethalia and Chillwhales.",
   "repository": {
     "type": "git",
     "url": "https://github.com/kethalia/workflows"
