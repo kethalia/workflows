@@ -106,8 +106,7 @@ jobs:
             **/node_modules
           key: ${{ steps.key.outputs.modules }}
       - name: Install dependencies
-        if: steps.modules-cache.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --prefer-offline
 
   # -------------------------------------------------------------------------
   # Format check (parallel with lint + build)
